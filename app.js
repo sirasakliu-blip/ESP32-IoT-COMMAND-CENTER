@@ -443,12 +443,14 @@ function updateChart(chart, rows, opts = {}) {
   const title = chart.options.plugins.title;
   if (opts.title !== undefined) { title.text = opts.title; title.display = !!opts.title; }
   chart.$emptyMessage = opts.emptyMessage;
+  chart.$lastArgs = { rows, opts }; // เก็บไว้ใช้วาดกราฟสำหรับดาวน์โหลด
   applyResponsiveChart(chart);
   chart.update();
 }
 
 // จอแคบ (มือถือ) → ซ่อนชื่อแกน, ตัวอักษรเล็กลง, ขีดเวลาน้อยลง
-function isNarrow() { return window.innerWidth <= 600; }
+let exportMode = false; // ระหว่างวาดกราฟสำหรับดาวน์โหลด ใช้รูปแบบจอใหญ่เสมอ
+function isNarrow() { return !exportMode && window.innerWidth <= 600; }
 function applyResponsiveChart(chart) {
   if (!chart) return;
   // แก้ที่ options ดิบ (chart.config.options) เท่านั้น — ห้ามเอาอ็อบเจกต์จาก chart.options
@@ -1157,96 +1159,250 @@ function exportFileName(ext) {
   return r.length ? `esp32-${r[0].date}_${r[0].time.slice(0, 5).replace(":", "")}-${r[r.length - 1].time.slice(0, 5).replace(":", "")}.${ext}` : `esp32.${ext}`;
 }
 
+// ===== ส่งไฟล์ให้ผู้ใช้ (รองรับ iPad/iPhone ที่ปุ่มดาวน์โหลดปกติใช้ไม่ได้) =====
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
 function downloadUrl(url, name) {
   const a = document.createElement("a");
-  a.href = url; a.download = name; a.click();
+  a.href = url; a.download = name; a.rel = "noopener";
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+function deliverFile(blob, name) {
+  const file = new File([blob], name, { type: blob.type });
+  // iPad/iPhone: เปิดหน้าแชร์ของระบบ → เลือก "บันทึกภาพ" / "บันทึกไปยังไฟล์"
+  if (IS_IOS && navigator.canShare && navigator.canShare({ files: [file] })) {
+    navigator.share({ files: [file], title: name }).catch((err) => {
+      if (err && err.name === "AbortError") return; // ผู้ใช้กดยกเลิกเอง
+      showSaveSheet(blob, name);
+    });
+    return;
+  }
+  if (IS_IOS) { showSaveSheet(blob, name); return; }
+  const url = URL.createObjectURL(blob);
+  downloadUrl(url, name);
+  setTimeout(() => URL.revokeObjectURL(url), 60000); // ปล่อยไว้ก่อน มือถือบางรุ่นดาวน์โหลดช้า
+}
+
+// สำรอง: แสดงหน้าต่างให้แตะบันทึกเอง (กรณีระบบไม่อนุญาตให้แชร์อัตโนมัติ)
+function showSaveSheet(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px";
+  const isImg = blob.type.startsWith("image/");
+  wrap.innerHTML = `<div style="background:#fff;color:#0f172a;border-radius:16px;padding:20px;max-width:420px;width:100%;text-align:center;font-family:inherit">
+    <div style="font-weight:700;font-size:17px;margin-bottom:6px">ไฟล์พร้อมแล้ว</div>
+    <div style="font-size:13px;color:#64748b;margin-bottom:14px">${name}</div>
+    ${isImg ? `<img src="${url}" style="max-width:100%;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:8px">
+      <div style="font-size:12.5px;color:#64748b;margin-bottom:12px">หรือแตะค้างที่รูป แล้วเลือก "บันทึกไปยังรูปภาพ"</div>` : ""}
+    <button data-act="save" style="width:100%;padding:12px;border:none;border-radius:10px;background:#0284c7;color:#fff;font-weight:700;font-size:15px;margin-bottom:8px">💾 บันทึกไฟล์</button>
+    <a data-act="open" href="${url}" target="_blank" rel="noopener" style="display:block;padding:10px;color:#0284c7;font-weight:600;font-size:14px">เปิดไฟล์ในแท็บใหม่</a>
+    <button data-act="close" style="width:100%;padding:10px;border:none;background:none;color:#64748b;font-size:14px">ปิด</button></div>`;
+  document.body.appendChild(wrap);
+  const close = () => { wrap.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000); };
+  wrap.addEventListener("click", (e) => {
+    const act = e.target.closest("[data-act]");
+    if (e.target === wrap || (act && act.dataset.act === "close")) close();
+    if (act && act.dataset.act === "save") {
+      const file = new File([blob], name, { type: blob.type });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: name }).then(close).catch(() => {});
+      } else { downloadUrl(url, name); }
+    }
+  });
+}
+
+function dataUrlToBlob(dataUrl) {
+  const [head, b64] = dataUrl.split(",");
+  const mime = head.match(/:(.*?);/)[1];
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
 }
 
 // CSV: วันที่/เวลาเป็นข้อความ เพื่อไม่ให้ Excel แปลงรูปแบบเอง (เช่น 12-11-26)
 if (exportCsvBtn) exportCsvBtn.onclick = () => {
   if (!exportRows.length) return;
-  let csv = "\uFEFFลำดับ,วันที่,เวลา,อุณหภูมิ (°C),ความชื้น (%)\n";
+  let csv = "﻿ลำดับ,วันที่,เวลา,อุณหภูมิ (°C),ความชื้น (%)\n";
   exportRows.forEach((r, i) => {
     csv += `${i + 1},="${r.date}",="${r.time}",${r.temp.toFixed(1)},${r.hum.toFixed(1)}\n`;
   });
-  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
-  downloadUrl(url, exportFileName("csv"));
-  URL.revokeObjectURL(url);
+  deliverFile(new Blob([csv], { type: "text/csv;charset=utf-8" }), exportFileName("csv"));
 };
 
-// รูปกราฟพื้นหลังทึบ (กราฟจริงโปร่งใส ถ้าไม่เติมพื้นจะดำในบางโปรแกรม)
-function chartImage(chart) {
-  const src = chart.canvas;
-  const out = document.createElement("canvas");
-  out.width = src.width; out.height = src.height;
-  const ctx = out.getContext("2d");
-  ctx.fillStyle = getThemeColors().isDark ? "#0f172a" : "#ffffff";
-  ctx.fillRect(0, 0, out.width, out.height);
-  ctx.drawImage(src, 0, 0);
-  return out.toDataURL("image/png");
+// รูปกราฟขนาดใหญ่ ธีมสว่าง พื้นขาว — วาดกราฟสำเนาบนแคนวาสที่ซ่อนไว้
+// (ไม่ขึ้นกับขนาดจอ มือถือก็ได้รูปกว้างคมชัดเท่าคอม และไม่กระทบกราฟบนหน้าเว็บ)
+function renderChartCanvas(chart, w = 900, h = 380) {
+  const args = chart.$lastArgs || { rows: exportRows, opts: {} };
+  const wasDark = getThemeColors().isDark;
+  if (wasDark) htmlRoot.setAttribute("data-theme", "light");
+  const holder = document.createElement("div");
+  holder.style.cssText = `position:fixed;left:-30000px;top:0;width:${w}px;height:${h}px;pointer-events:none`;
+  const cv = document.createElement("canvas");
+  cv.id = "__exportChart";
+  holder.appendChild(cv);
+  document.body.appendChild(holder);
+  exportMode = true;
+  let out;
+  try {
+    const ex = makeChart("__exportChart");
+    ex.config.options.animation = false;
+    ex.config.options.devicePixelRatio = 2;
+    ex.config.options.responsive = false;
+    ex.stop(); // หยุดแอนิเมชันตอนสร้าง ให้วาดเสร็จทันที
+    ex.resize(w, h);
+    updateChart(ex, args.rows, args.opts);
+    ex.stop();
+    ex.draw();
+    const src = ex.canvas;
+    out = document.createElement("canvas");
+    out.width = src.width; out.height = src.height;
+    const ctx = out.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, out.width, out.height);
+    ctx.drawImage(src, 0, 0);
+    ex.destroy();
+  } finally {
+    exportMode = false;
+    holder.remove();
+    if (wasDark) htmlRoot.setAttribute("data-theme", "dark");
+  }
+  return out;
 }
+function chartImage(chart) { return renderChartCanvas(chart).toDataURL("image/png"); }
 
 const exportPngBtn = document.getElementById("exportPngBtn");
 if (exportPngBtn) exportPngBtn.onclick = () => {
   if (!rangeChart || !exportRows.length) return;
-  downloadUrl(chartImage(rangeChart), exportFileName("png"));
+  deliverFile(dataUrlToBlob(chartImage(rangeChart)), exportFileName("png"));
 };
 
-// รายงาน: เปิดหน้าพร้อมพิมพ์ แล้วเลือก "บันทึกเป็น PDF" ในหน้าต่างพิมพ์
+// ===== รายงาน PDF: วาดหน้า A4 ลงแคนวาสเอง แล้วประกอบเป็นไฟล์ PDF จริง =====
+// (ไม่ใช้หน้าต่างพิมพ์ จึงได้ไฟล์ครบทุกหน้า มีกราฟ ใช้ได้ทั้งคอม มือถือ iPad)
+function buildPdf(jpegPages, pw = 595.28, ph = 841.89) {
+  const enc = new TextEncoder();
+  const parts = []; const offsets = []; let len = 0;
+  const push = (x) => { const b = typeof x === "string" ? enc.encode(x) : x; parts.push(b); len += b.length; };
+  push("%PDF-1.4\n%\xE2\xE3\xCF\xD3\n");
+  const n = jpegPages.length;
+  // 1 = catalog, 2 = pages, แล้วต่อด้วย (page, content, image) ทีละหน้า
+  const obj = (id, body) => { offsets[id] = len; push(`${id} 0 obj\n`); body(); push("\nendobj\n"); };
+  obj(1, () => push("<< /Type /Catalog /Pages 2 0 R >>"));
+  const kids = jpegPages.map((_, i) => `${3 + i * 3} 0 R`).join(" ");
+  obj(2, () => push(`<< /Type /Pages /Kids [${kids}] /Count ${n} >>`));
+  jpegPages.forEach((pg, i) => {
+    const pid = 3 + i * 3, cid = pid + 1, iid = pid + 2;
+    obj(pid, () => push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pw} ${ph}] /Resources << /XObject << /Im${i} ${iid} 0 R >> >> /Contents ${cid} 0 R >>`));
+    const content = `q ${pw} 0 0 ${ph} 0 0 cm /Im${i} Do Q`;
+    obj(cid, () => push(`<< /Length ${content.length} >>\nstream\n${content}\nendstream`));
+    obj(iid, () => {
+      push(`<< /Type /XObject /Subtype /Image /Width ${pg.w} /Height ${pg.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${pg.bytes.length} >>\nstream\n`);
+      push(pg.bytes); push("\nendstream");
+    });
+  });
+  const total = 3 + n * 3;
+  const xref = len;
+  let x = `xref\n0 ${total}\n0000000000 65535 f \n`;
+  for (let i = 1; i < total; i++) x += String(offsets[i]).padStart(10, "0") + " 00000 n \n";
+  push(x + `trailer\n<< /Size ${total} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`);
+  return new Blob(parts, { type: "application/pdf" });
+}
+
+function makeReportPages(rows, chartCanvas, title) {
+  const W = 1240, H = 1754, M = 80; // A4 ที่ 150 dpi
+  const font = getComputedStyle(document.body).fontFamily || "sans-serif";
+  const pages = [];
+  const t = rows.map((r) => r.temp), h = rows.map((r) => r.hum);
+  const avg = (a) => (a.reduce((x, y) => x + y, 0) / a.length).toFixed(1);
+  const now = Date.now();
+  const rowH = 40;
+  const cols = [0.09, 0.24, 0.2, 0.235, 0.235]; // สัดส่วนความกว้างคอลัมน์
+  const heads = ["ลำดับ", "วันที่", "เวลา", "อุณหภูมิ (°C)", "ความชื้น (%)"];
+  let ctx, y;
+
+  const newPage = () => {
+    const c = document.createElement("canvas"); c.width = W; c.height = H;
+    ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
+    ctx.textBaseline = "middle"; ctx.textAlign = "left"; ctx.direction = "ltr";
+    pages.push(c); y = M;
+  };
+  const text = (s, x, yy, size, weight = 400, color = "#0f172a", align = "left") => {
+    ctx.font = `${weight} ${size}px ${font}`; ctx.fillStyle = color;
+    const w = ctx.measureText(s).width;
+    ctx.fillText(s, align === "center" ? x - w / 2 : x, yy);
+  };
+  const tableHead = () => {
+    ctx.fillStyle = "#f1f5f9"; ctx.fillRect(M, y, W - 2 * M, rowH);
+    let x = M;
+    heads.forEach((hd, i) => { const cw = cols[i] * (W - 2 * M); text(hd, x + cw / 2, y + rowH / 2, 19, 700, "#334155", "center"); x += cw; });
+    y += rowH;
+  };
+
+  newPage();
+  text("รายงานอุณหภูมิและความชื้น (ESP32 + DHT11)", M, y + 18, 36, 700);
+  y += 58;
+  text(title, M, y, 21, 400, "#475569"); y += 32;
+  text(`ออกรายงานเมื่อ ${fmtThDate(now)} ${fmtThTime(now)} น.`, M, y, 19, 400, "#64748b"); y += 40;
+
+  // กล่องสรุป 3 ช่อง
+  const kw = (W - 2 * M - 40) / 3, kh = 130;
+  const kpis = [
+    ["อุณหภูมิเฉลี่ย", `${avg(t)} °C`, `ต่ำสุด ${Math.min(...t).toFixed(1)} · สูงสุด ${Math.max(...t).toFixed(1)} °C`, "#ea580c"],
+    ["ความชื้นเฉลี่ย", `${avg(h)} %`, `ต่ำสุด ${Math.min(...h).toFixed(1)} · สูงสุด ${Math.max(...h).toFixed(1)} %`, "#0284c7"],
+    ["จำนวนข้อมูล", `${rows.length} จุด`, `${rows[0].time.slice(0, 5)} – ${rows[rows.length - 1].time.slice(0, 5)} น.`, "#0f172a"],
+  ];
+  kpis.forEach((k, i) => {
+    const x = M + i * (kw + 20);
+    ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 2; ctx.strokeRect(x, y, kw, kh);
+    text(k[0], x + 18, y + 30, 18, 600, "#64748b");
+    text(k[1], x + 18, y + 72, 34, 700, k[3]);
+    text(k[2], x + 18, y + 108, 16, 400, "#64748b");
+  });
+  y += kh + 26;
+
+  // กราฟ
+  const gw = W - 2 * M, gh = Math.round(gw * chartCanvas.height / chartCanvas.width);
+  ctx.drawImage(chartCanvas, M, y, gw, gh);
+  ctx.strokeStyle = "#e2e8f0"; ctx.strokeRect(M, y, gw, gh);
+  y += gh + 28;
+
+  // ตาราง (ขึ้นหน้าใหม่อัตโนมัติ)
+  tableHead();
+  rows.forEach((r, i) => {
+    if (y + rowH > H - M - 30) { newPage(); tableHead(); }
+    const vals = [String(i + 1), r.date, r.time, r.temp.toFixed(1), r.hum.toFixed(1)];
+    let x = M;
+    vals.forEach((v, j) => { const cw = cols[j] * (W - 2 * M); text(v, x + cw / 2, y + rowH / 2, 19, 400, "#0f172a", "center"); x += cw; });
+    ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(M, y + rowH); ctx.lineTo(W - M, y + rowH); ctx.stroke();
+    y += rowH;
+  });
+
+  // เลขหน้า (มุมขวาล่าง)
+  pages.forEach((c, i) => {
+    ctx = c.getContext("2d");
+    const s = `หน้า ${i + 1}/${pages.length}`; ctx.font = `400 16px ${font}`; ctx.fillStyle = "#94a3b8";
+    ctx.fillText(s, W - M - ctx.measureText(s).width, H - M / 2);
+  });
+  return pages;
+}
+
 const exportReportBtn = document.getElementById("exportReportBtn");
 if (exportReportBtn) exportReportBtn.onclick = () => {
   if (!rangeChart || !exportRows.length) return;
-  // ใช้ธีมสว่างสำหรับรายงานเสมอ
-  const wasDark = getThemeColors().isDark;
-  if (wasDark) { htmlRoot.setAttribute("data-theme", "light"); updateChartsTheme(); }
-  rangeChart.resize(1000, 420);
-  const img = chartImage(rangeChart);
-  rangeChart.resize();
-  if (wasDark) { htmlRoot.setAttribute("data-theme", "dark"); updateChartsTheme(); }
-
   const rows = exportRows;
-  const t = rows.map((r) => r.temp), h = rows.map((r) => r.hum);
-  const avg = (a) => (a.reduce((x, y) => x + y, 0) / a.length).toFixed(1);
   const title = rangeChart.options.plugins.title.text || rangeTitle(rows);
-  const now = Date.now();
-  const tableRows = rows.map((r, i) =>
-    `<tr><td>${i + 1}</td><td>${r.date}</td><td>${r.time}</td><td>${r.temp.toFixed(1)}</td><td>${r.hum.toFixed(1)}</td></tr>`).join("");
-
-  const w = window.open("", "_blank");
-  if (!w) { alert("เบราว์เซอร์บล็อกหน้าต่างใหม่ กรุณาอนุญาต Pop-up แล้วลองอีกครั้ง"); return; }
-  w.document.write(`<!DOCTYPE html><html lang="th"><head><meta charset="utf-8">
-<title>รายงาน ${exportFileName("pdf")}</title>
-<style>
-  @page { size: A4; margin: 14mm; }
-  body { font-family: "Prompt", "Sarabun", "Tahoma", sans-serif; color: #0f172a; margin: 0; }
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  .sub { color: #64748b; font-size: 12px; margin-bottom: 14px; }
-  .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 12px 0; }
-  .kpi { border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px; }
-  .kpi b { display: block; font-size: 18px; }
-  .kpi span { font-size: 11px; color: #64748b; }
-  img { width: 100%; border: 1px solid #e2e8f0; border-radius: 8px; }
-  table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 12px; }
-  th, td { border-bottom: 1px solid #e2e8f0; padding: 5px 6px; text-align: center; }
-  th { background: #f1f5f9; }
-  tr { page-break-inside: avoid; }
-  .hint { background: #fef9c3; padding: 8px 12px; border-radius: 6px; font-size: 13px; margin-bottom: 12px; }
-  @media print { .hint { display: none; } }
-</style></head><body>
-<div class="hint">💡 เลือกเครื่องพิมพ์เป็น <b>"บันทึกเป็น PDF" / "Save as PDF"</b> เพื่อดาวน์โหลดเป็นไฟล์ PDF</div>
-<h1>รายงานอุณหภูมิและความชื้น (ESP32 + DHT11)</h1>
-<div class="sub">${title}<br>ออกรายงานเมื่อ ${fmtThDate(now)} ${fmtThTime(now)} น.</div>
-<div class="kpis">
-  <div class="kpi"><span>อุณหภูมิเฉลี่ย</span><b>${avg(t)} °C</b><span>ต่ำสุด ${Math.min(...t).toFixed(1)} · สูงสุด ${Math.max(...t).toFixed(1)} °C</span></div>
-  <div class="kpi"><span>ความชื้นเฉลี่ย</span><b>${avg(h)} %</b><span>ต่ำสุด ${Math.min(...h).toFixed(1)} · สูงสุด ${Math.max(...h).toFixed(1)} %</span></div>
-  <div class="kpi"><span>จำนวนข้อมูล</span><b>${rows.length} จุด</b><span>${rows[0].date} ${rows[0].time} – ${rows[rows.length - 1].date} ${rows[rows.length - 1].time}</span></div>
-</div>
-<img src="${img}" alt="กราฟอุณหภูมิและความชื้น">
-<table><thead><tr><th>ลำดับ</th><th>วันที่</th><th>เวลา</th><th>อุณหภูมิ (°C)</th><th>ความชื้น (%)</th></tr></thead>
-<tbody>${tableRows}</tbody></table>
-<script>window.onload = () => setTimeout(() => window.print(), 300);<\/script>
-</body></html>`);
-  w.document.close();
+  const pages = makeReportPages(rows, renderChartCanvas(rangeChart), title);
+  // แปลงแต่ละหน้าเป็น JPEG แบบ synchronous (ยังอยู่ในจังหวะกดปุ่ม ทำให้ iPad เปิดหน้าแชร์ได้)
+  const pdfPages = pages.map((c) => {
+    const b64 = c.toDataURL("image/jpeg", 0.9).split(",")[1];
+    const bin = atob(b64); const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return { w: c.width, h: c.height, bytes };
+  });
+  deliverFile(buildPdf(pdfPages), exportFileName("pdf"));
 };
 
 // ==========================================================================
