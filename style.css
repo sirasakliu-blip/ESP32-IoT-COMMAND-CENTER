@@ -1328,3 +1328,15 @@ tbody tr:last-child td {
     height: 290px;
   }
 }
+
+
+/* ===== ช่วงข้อมูลที่มีอยู่จริง (ใต้ช่องค้นหา) ===== */
+.range-hint {
+  margin: 10px 4px 0;
+  font-size: 13px;
+  color: var(--text-muted, #64748b);
+  line-height: 1.6;
+}
+.range-hint strong { color: var(--text-main, inherit); }
+.range-hint a { color: var(--primary-color, #0284c7); font-weight: 600; text-decoration: underline; }
+.empty-state small { display: block; margin-top: 6px; opacity: .8; }

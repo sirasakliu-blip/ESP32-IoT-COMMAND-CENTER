@@ -84,6 +84,8 @@ let isDemoMode = false;
 let isSheetMode = false;
 let currentSource = "none";
 let currentRows = [];
+// การค้นหาที่ผู้ใช้เลือกอยู่ (ถ้ามี) — ระหว่างดูผลค้นหา ระบบรีเฟรชจะไม่เด้งกลับไปหน้ากราฟรวม
+let activeSearch = null;
 let demoRows = [];
 let liveChart = null;
 let rangeChart = null;
@@ -119,6 +121,36 @@ function getThemeColors() {
   };
 }
 
+// ===== ตัวช่วยแสดงวันที่/เวลาภาษาไทย (เวลาไทย) =====
+const TH_MONTHS = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+function thParts(ms) {
+  const d = new Date(ms + 7 * 3600 * 1000); // แปลงเป็นเวลาไทยแล้วอ่านค่าแบบ UTC
+  return { y: d.getUTCFullYear(), m: d.getUTCMonth(), day: d.getUTCDate(),
+           hh: String(d.getUTCHours()).padStart(2, "0"), mm: String(d.getUTCMinutes()).padStart(2, "0"),
+           ss: String(d.getUTCSeconds()).padStart(2, "0") };
+}
+function fmtThDate(ms) { const p = thParts(ms); return `${p.day} ${TH_MONTHS[p.m]} ${p.y}`; }
+function fmtThTime(ms, withSec) { const p = thParts(ms); return withSec ? `${p.hh}:${p.mm}:${p.ss}` : `${p.hh}:${p.mm}`; }
+
+// แสดงข้อความกลางกราฟเมื่อไม่มีข้อมูล
+const noDataPlugin = {
+  id: "noData",
+  afterDraw(chart) {
+    const hasData = chart.data.datasets.some((ds) => ds.data.some((pt) => pt && pt.y !== null));
+    if (hasData) return;
+    const { ctx, chartArea } = chart;
+    if (!chartArea) return;
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = getThemeColors().tickColor;
+    ctx.font = "600 15px 'Prompt', sans-serif";
+    ctx.fillText(chart.$emptyMessage || "ไม่มีข้อมูลในช่วงเวลานี้",
+      (chartArea.left + chartArea.right) / 2, (chartArea.top + chartArea.bottom) / 2);
+    ctx.restore();
+  }
+};
+
 function makeChart(id) {
   const canvas = document.getElementById(id);
   if (!canvas) return null;
@@ -137,6 +169,7 @@ function makeChart(id) {
 
   return new Chart(canvas, {
     type: "line",
+    plugins: [noDataPlugin],
     data: {
       labels: [],
       datasets: [
@@ -146,8 +179,11 @@ function makeChart(id) {
           borderColor: "#ff5e36",
           backgroundColor: tempGrad,
           yAxisID: "yT",
-          tension: 0.35,
+          tension: 0.3,
+          cubicInterpolationMode: "monotone", // เส้นโค้งไม่พุ่งเกินค่าจริง
+          spanGaps: false,                     // ช่วงที่ไม่มีข้อมูลจะเว้นว่าง ไม่ลากเส้นหลอก
           pointRadius: 0,
+          pointHitRadius: 10,
           pointHoverRadius: 6,
           pointHoverBackgroundColor: "#ff5e36",
           pointHoverBorderColor: "#ffffff",
@@ -161,8 +197,11 @@ function makeChart(id) {
           borderColor: "#0ea5e9",
           backgroundColor: humGrad,
           yAxisID: "yH",
-          tension: 0.35,
+          tension: 0.3,
+          cubicInterpolationMode: "monotone", // เส้นโค้งไม่พุ่งเกินค่าจริง
+          spanGaps: false,                     // ช่วงที่ไม่มีข้อมูลจะเว้นว่าง ไม่ลากเส้นหลอก
           pointRadius: 0,
+          pointHitRadius: 10,
           pointHoverRadius: 6,
           pointHoverBackgroundColor: "#0ea5e9",
           pointHoverBorderColor: "#ffffff",
@@ -180,6 +219,14 @@ function makeChart(id) {
         intersect: false
       },
       plugins: {
+        title: {
+          display: false,
+          text: "",
+          align: "start",
+          color: theme.tickColor,
+          font: { family: "'Plus Jakarta Sans', 'Prompt', sans-serif", size: 13, weight: '600' },
+          padding: { bottom: 4 }
+        },
         legend: {
           position: "top",
           align: "end",
@@ -202,17 +249,44 @@ function makeChart(id) {
           boxPadding: 6,
           cornerRadius: 10,
           titleFont: { family: "'Plus Jakarta Sans', 'Prompt', sans-serif", weight: 'bold' },
-          bodyFont: { family: "'Plus Jakarta Sans', 'Prompt', sans-serif" }
+          bodyFont: { family: "'Plus Jakarta Sans', 'Prompt', sans-serif" },
+          filter: (item) => item.raw && item.raw.y !== null,
+          callbacks: {
+            // หัว tooltip: วันที่ + เวลา (เช่น 12 พ.ย. 2026 · 00:24:10 น.)
+            title: (items) => items.length ? `📅 ${fmtThDate(items[0].parsed.x)} · ⏰ ${fmtThTime(items[0].parsed.x, true)} น.` : "",
+            label: (item) => item.datasetIndex === 0
+              ? ` 🌡️ อุณหภูมิ: ${item.parsed.y.toFixed(1)} °C`
+              : ` 💧 ความชื้น: ${item.parsed.y.toFixed(1)} %`
+          }
         }
       },
       scales: {
         x: {
+          type: "linear", // แกนเวลาจริง: ระยะห่างตามเวลา ช่วงที่ขาดข้อมูลจะเห็นชัด
+          afterBuildTicks: (axis) => {
+            // สร้างขีดเองให้ตรงเวลาไทยพอดี (เช่น 00:00, 00:15, 00:30)
+            const step = axis.options.ticks.stepSize;
+            if (!step || axis.min === undefined) return;
+            const off = 7 * 3600 * 1000;
+            const first = Math.ceil((axis.min + off) / step) * step - off;
+            const ticks = [];
+            for (let v = first; v <= axis.max + 1; v += step) ticks.push({ value: v });
+            axis.ticks = ticks;
+          },
+          title: { display: true, text: "เวลา (น.)", color: theme.tickColor, font: { weight: 'bold', size: 12 } },
           grid: { color: theme.gridColor, drawTicks: false },
-          ticks: { color: theme.tickColor, maxTicksLimit: 12, font: { size: 11 } }
+          ticks: {
+            color: theme.tickColor, maxTicksLimit: 10, maxRotation: 0, font: { size: 11 },
+            callback: function (value) {
+              const spanMs = this.max - this.min;
+              const t = fmtThTime(value, spanMs < 10 * 60 * 1000);
+              return spanMs > 20 * 3600 * 1000 ? [t, fmtThDate(value)] : t; // ข้ามวัน -> แสดงวันที่ใต้เวลา
+            }
+          }
         },
         yT: {
           position: "left",
-          title: { display: true, text: "°C", color: "#ff5e36", font: { weight: 'bold', size: 12 } },
+          title: { display: true, text: "อุณหภูมิ (°C)", color: "#ff5e36", font: { weight: 'bold', size: 12 } },
           grid: { color: theme.gridColor },
           ticks: { color: theme.tickColor, font: { size: 11 } },
           suggestedMin: 20,
@@ -220,7 +294,7 @@ function makeChart(id) {
         },
         yH: {
           position: "right",
-          title: { display: true, text: "%", color: "#0ea5e9", font: { weight: 'bold', size: 12 } },
+          title: { display: true, text: "ความชื้น (%)", color: "#0ea5e9", font: { weight: 'bold', size: 12 } },
           grid: { drawOnChartArea: false },
           ticks: { color: theme.tickColor, font: { size: 11 } },
           suggestedMin: 30,
@@ -231,12 +305,84 @@ function makeChart(id) {
   });
 }
 
-function updateChart(chart, rows) {
+// rows: [{ts (วินาที), date, time, temp, hum}]  opts: { title, emptyMessage }
+function updateChart(chart, rows, opts = {}) {
   if (!chart || !rows) return;
-  chart.data.labels = rows.map((r) => `${r.date.slice(5)} ${r.time.slice(0, 5)}`);
-  chart.data.datasets[0].data = rows.map((r) => r.temp);
-  chart.data.datasets[1].data = rows.map((r) => r.hum);
+  const valid = rows.filter((r) => r.ts > 0).sort((a, b) => a.ts - b.ts);
+
+  // ใส่ช่องว่างเมื่อข้อมูลขาดหายเกิน 15 นาที (บอร์ดออฟไลน์) เส้นจะไม่ถูกลากข้าม
+  const GAP_SEC = 15 * 60;
+  const tPts = [], hPts = [];
+  valid.forEach((r, i) => {
+    if (i > 0 && r.ts - valid[i - 1].ts > GAP_SEC) {
+      const mid = ((r.ts + valid[i - 1].ts) / 2) * 1000;
+      tPts.push({ x: mid, y: null });
+      hPts.push({ x: mid, y: null });
+    }
+    tPts.push({ x: r.ts * 1000, y: r.temp });
+    hPts.push({ x: r.ts * 1000, y: r.hum });
+  });
+  chart.data.labels = [];
+  chart.data.datasets[0].data = tPts;
+  chart.data.datasets[1].data = hPts;
+
+  // จุดข้อมูล: แสดงเม็ดกลมเมื่อจำนวนไม่มาก จะได้เห็นว่าค่าแต่ละจุดอยู่ตรงไหน
+  const r = valid.length <= 60 ? 3 : 0;
+  chart.data.datasets.forEach((ds) => { ds.pointRadius = r; ds.pointBackgroundColor = ds.borderColor; });
+
+  // ปรับช่วงแกนตามข้อมูลจริง (ไม่บีบเส้นให้แบนจนอ่านไม่ออก)
+  const sc = chart.options.scales;
+  if (valid.length) {
+    const t = valid.map((v) => v.temp), h = valid.map((v) => v.hum);
+    const padT = Math.max(1, (Math.max(...t) - Math.min(...t)) * 0.15);
+    const padH = Math.max(3, (Math.max(...h) - Math.min(...h)) * 0.15);
+    // ปัดขอบแกนให้เป็นเลขกลมๆ: อุณหภูมิทีละ 2 °C, ความชื้นทีละ 5 %
+    sc.yT.min = Math.floor((Math.min(...t) - padT) / 2) * 2; sc.yT.max = Math.ceil((Math.max(...t) + padT) / 2) * 2;
+    sc.yH.min = Math.max(0, Math.floor((Math.min(...h) - padH) / 5) * 5); sc.yH.max = Math.min(100, Math.ceil((Math.max(...h) + padH) / 5) * 5);
+    sc.yT.ticks.stepSize = 2; sc.yH.ticks.stepSize = 5;
+    let xMin = opts.xMin !== undefined ? opts.xMin : valid[0].ts * 1000;
+    let xMax = opts.xMax !== undefined ? opts.xMax : valid[valid.length - 1].ts * 1000;
+    if (xMax - xMin < 60000) { xMin -= 30000; xMax += 30000; }
+    setTimeAxis(sc.x, xMin, xMax, opts.xMin === undefined);
+  } else {
+    delete sc.yT.min; delete sc.yT.max; delete sc.yH.min; delete sc.yH.max;
+    delete sc.yT.ticks.stepSize; delete sc.yH.ticks.stepSize;
+    if (opts.xMin !== undefined) setTimeAxis(sc.x, opts.xMin, opts.xMax, false);
+    else { delete sc.x.min; delete sc.x.max; delete sc.x.ticks.stepSize; }
+  }
+
+  // หัวกราฟบอกช่วงข้อมูลที่แสดง
+  const title = chart.options.plugins.title;
+  if (opts.title !== undefined) { title.text = opts.title; title.display = !!opts.title; }
+  chart.$emptyMessage = opts.emptyMessage;
   chart.update();
+}
+
+// แกนเวลา: เลือกระยะห่างขีดเป็นนาทีกลมๆ (5, 10, 15, 30 นาที, 1, 2, 3 ชม. ...) ไม่เกิน ~8 ขีด
+// roundEnds = true จะขยายขอบซ้าย/ขวาให้ตรงขีดพอดี (ใช้กับกราฟข้อมูลทั้งหมด/24 ชม.)
+function setTimeAxis(x, minMs, maxMs, roundEnds) {
+  const steps = [1, 2, 5, 10, 15, 30, 60, 120, 180, 240, 360, 720, 1440];
+  const spanMin = (maxMs - minMs) / 60000;
+  const stepMin = steps.find((m) => spanMin / m <= 8) || 1440;
+  const stepMs = stepMin * 60000;
+  const off = 7 * 3600 * 1000; // ให้ขีดตรงเวลาไทย
+  if (roundEnds) {
+    minMs = Math.floor((minMs + off) / stepMs) * stepMs - off;
+    maxMs = Math.ceil((maxMs + off) / stepMs) * stepMs - off;
+  }
+  x.min = minMs; x.max = maxMs;
+  x.ticks.stepSize = stepMs;
+}
+
+// ข้อความหัวกราฟ เช่น "12 พ.ย. 2026 · 00:09 – 00:39 น. · 7 จุด"
+function rangeTitle(rows, prefix = "") {
+  if (!rows.length) return "";
+  const a = rows[0].ts * 1000, b = rows[rows.length - 1].ts * 1000;
+  const sameDay = fmtThDate(a) === fmtThDate(b);
+  const span = sameDay
+    ? `${fmtThDate(a)} · ${fmtThTime(a)} – ${fmtThTime(b)} น.`
+    : `${fmtThDate(a)} ${fmtThTime(a)} – ${fmtThDate(b)} ${fmtThTime(b)} น.`;
+  return `${prefix}${span} · ${rows.length} จุด`;
 }
 
 function updateChartsTheme() {
@@ -251,6 +397,10 @@ function updateChartsTheme() {
       chart.options.scales.x.grid.color = theme.gridColor;
       if (!chart.options.scales.x.ticks) chart.options.scales.x.ticks = {};
       chart.options.scales.x.ticks.color = theme.tickColor;
+      if (chart.options.scales.x.title) chart.options.scales.x.title.color = theme.tickColor;
+    }
+    if (chart.options.plugins && chart.options.plugins.title) {
+      chart.options.plugins.title.color = theme.tickColor;
     }
 
     if (chart.options.scales.yT) {
@@ -486,14 +636,22 @@ async function fetchFromGoogleSheet(inputUrl, isBackground = false) {
     updateMinMaxSub(rows);
     checkStatus();
 
-    // แสดงผลกราฟ 24 ชม.
-    updateChart(liveChart, rows.slice(-288));
+    // กราฟ 24 ชม. ล่าสุด (นับตามเวลาจริง ไม่ใช่จำนวนแถว)
+    const lastTsAll = rows[rows.length - 1].ts;
+    const last24 = rows.filter((r) => r.ts >= lastTsAll - 24 * 3600);
+    updateChart(liveChart, last24, { title: rangeTitle(last24, "24 ชม. ล่าสุด: ") });
 
-    // แสดงผลลงตารางและกราฟค้นหาทันที!
-    updateChart(rangeChart, rows);
-    renderTable(rows);
-    renderSummary(rows);
-    setupExportCsv(rows);
+    updateDataRangeHint(rows);
+
+    // ส่วนค้นหา: ถ้าผู้ใช้กำลังดูช่วงที่ค้นหาอยู่ ให้คงช่วงนั้นไว้ (อัปเดตข้อมูลใหม่ในช่วงเดิม)
+    if (activeSearch) {
+      runSearch(true);
+    } else {
+      updateChart(rangeChart, rows, { title: rangeTitle(rows, "ข้อมูลทั้งหมด: ") });
+      renderTable(rows);
+      renderSummary(rows);
+      setupExportCsv(rows);
+    }
 
     if (configNotice) configNotice.style.display = "none";
     return true;
@@ -692,65 +850,88 @@ if (quickTodayBtn) {
   });
 }
 
-if (searchBtn) {
-  searchBtn.addEventListener("click", async () => {
-    const d = dateInput ? dateInput.value : "";
-    const s = startInput ? startInput.value : "";
-    const e = endInput ? endInput.value : "";
+// แสดงช่วงข้อมูลที่มีอยู่จริง และจำกัดปฏิทินให้เลือกได้เฉพาะวันที่มีข้อมูล
+function updateDataRangeHint(rows) {
+  const hint = document.getElementById("dataRangeHint");
+  const valid = rows.filter((r) => r.ts > 0);
+  if (!valid.length) { if (hint) hint.textContent = ""; return; }
+  const a = valid[0].ts * 1000, b = valid[valid.length - 1].ts * 1000;
+  const toISO = (ms) => new Date(ms + 7 * 3600 * 1000).toISOString().slice(0, 10);
+  if (dateInput) { dateInput.min = toISO(a); dateInput.max = toISO(b); }
+  if (hint) {
+    hint.innerHTML = `📦 มีข้อมูลตั้งแต่ <strong>${fmtThDate(a)} ${fmtThTime(a)} น.</strong> ถึง <strong>${fmtThDate(b)} ${fmtThTime(b)} น.</strong> (${valid.length} จุด)` +
+      (activeSearch ? ` · <a href="#" id="clearSearchLink">แสดงข้อมูลทั้งหมด</a>` : "");
+    const link = document.getElementById("clearSearchLink");
+    if (link) link.onclick = (ev) => { ev.preventDefault(); clearSearch(); };
+  }
+}
 
-    if (!d || !s || !e) {
-      alert("กรุณาเลือกวันที่และเวลาให้ครบถ้วน");
+function clearSearch() {
+  activeSearch = null;
+  const rows = isDemoMode ? demoRows : currentRows;
+  updateChart(rangeChart, rows, { title: rangeTitle(rows, "ข้อมูลทั้งหมด: ") });
+  renderTable(rows);
+  renderSummary(rows);
+  setupExportCsv(rows);
+  updateDataRangeHint(rows);
+}
+
+// silent = true: เรียกจากการรีเฟรชอัตโนมัติ (ไม่แสดง alert)
+async function runSearch(silent = false) {
+  const d = dateInput ? dateInput.value : "";
+  const s = startInput ? startInput.value : "";
+  const e = endInput ? endInput.value : "";
+  const warn = (msg) => { if (!silent) alert(msg); };
+
+  if (!d || !s || !e) { warn("กรุณาเลือกวันที่และเวลาให้ครบถ้วน"); return; }
+
+  const startTs = Date.parse(`${d}T${s}:00+07:00`) / 1000;
+  const endTs = Date.parse(`${d}T${e}:59+07:00`) / 1000;
+  if (isNaN(startTs) || isNaN(endTs)) { warn("รูปแบบวันที่หรือเวลาไม่ถูกต้อง"); return; }
+  if (endTs < startTs) { warn("เวลาสิ้นสุดต้องหลังเวลาเริ่มต้น"); return; }
+
+  activeSearch = { d, s, e };
+  const label = `${fmtThDate(startTs * 1000)} · ${s} – ${e} น.`;
+  const range = { xMin: startTs * 1000, xMax: endTs * 1000 };
+
+  let rows = [];
+  if (isDemoMode || isSheetMode) {
+    const sourceList = isDemoMode ? demoRows : currentRows;
+    rows = sourceList.filter((r) => r.ts >= startTs && r.ts <= endTs);
+
+    if (!rows.length) {
+      // บอกช่วงที่มีข้อมูลจริง แทนการแสดงกราฟว่างเฉยๆ
+      const valid = sourceList.filter((r) => r.ts > 0);
+      const avail = valid.length
+        ? `ข้อมูลที่มี: ${fmtThDate(valid[0].ts * 1000)} ${fmtThTime(valid[0].ts * 1000)} – ${fmtThDate(valid[valid.length - 1].ts * 1000)} ${fmtThTime(valid[valid.length - 1].ts * 1000)} น.`
+        : "ยังไม่มีข้อมูลในระบบ";
+      updateChart(rangeChart, [], { ...range, title: `ผลการค้นหา: ${label}`, emptyMessage: `ไม่มีข้อมูลในช่วงนี้ — ${avail}` });
+      renderTable([], `ไม่มีข้อมูลช่วง ${label}<br><small>${avail}</small>`);
+      renderSummary([]);
+      setupExportCsv([]);
+      updateDataRangeHint(sourceList);
       return;
     }
-
-    const startTs = Date.parse(`${d}T${s}:00+07:00`) / 1000;
-    const endTs = Date.parse(`${d}T${e}:59+07:00`) / 1000;
-
-    if (isNaN(startTs) || isNaN(endTs)) {
-      alert("รูปแบบวันที่หรือเวลาไม่ถูกต้อง");
-      return;
-    }
-
-    if (endTs < startTs) {
-      alert("เวลาสิ้นสุดต้องหลังเวลาเริ่มต้น");
-      return;
-    }
-
-    // กรณีทำงานในโหมดจำลองข้อมูล (Demo) หรือ Google Sheet
-    if (isDemoMode || isSheetMode) {
-      const sourceList = isDemoMode ? demoRows : currentRows;
-      const filtered = sourceList.filter(r => r.ts >= startTs && r.ts <= endTs);
-      updateChart(rangeChart, filtered);
-      renderTable(filtered);
-      renderSummary(filtered, s, e);
-      setupExportCsv(filtered);
-      return;
-    }
-
-    if (!readingsRef) {
-      alert("กรุณาเชื่อมต่อ Google Sheet หรือ Firebase ก่อน หรือกด 'โหลดข้อมูลจำลอง (Demo)'");
-      return;
-    }
-
+  } else {
+    if (!readingsRef) { warn("กรุณาเชื่อมต่อ Google Sheet หรือ Firebase ก่อน หรือกด 'โหลดข้อมูลจำลอง (Demo)'"); return; }
     try {
-      const q = query(
-        readingsRef, 
-        orderByChild("ts"), 
-        startAt(startTs), 
-        endAt(endTs)
-      );
-      const snap = await get(q);
-      const rows = toRows(snap);
-      updateChart(rangeChart, rows);
-      renderTable(rows);
-      renderSummary(rows, s, e);
-      setupExportCsv(rows);
+      const snap = await get(query(readingsRef, orderByChild("ts"), startAt(startTs), endAt(endTs)));
+      rows = toRows(snap);
     } catch (err) {
       console.error("Search query failed:", err);
-      alert("ค้นหาไม่สำเร็จ: " + err.message + "\n(กรุณาตรวจว่าได้ตั้ง .indexOn: ['ts'] ใน Firebase Rules แล้วหรือยัง)");
+      warn("ค้นหาไม่สำเร็จ: " + err.message);
+      return;
     }
-  });
+  }
+
+  updateChart(rangeChart, rows, { ...range, title: `ผลการค้นหา: ${label} · ${rows.length} จุด`, emptyMessage: "ไม่มีข้อมูลในช่วงนี้" });
+  renderTable(rows);
+  renderSummary(rows, s, e);
+  setupExportCsv(rows);
+  updateDataRangeHint(isDemoMode ? demoRows : currentRows);
 }
+
+if (searchBtn) searchBtn.addEventListener("click", () => runSearch(false));
 
 function toRows(snap) {
   const rows = [];
@@ -770,7 +951,7 @@ function toRows(snap) {
   return rows.sort((a, b) => a.ts - b.ts);
 }
 
-function renderTable(rows) {
+function renderTable(rows, emptyHtml = "ไม่พบข้อมูลในช่วงเวลาที่เลือก") {
   const tbody = document.querySelector("#dataTable tbody");
   if (!tbody) return;
   tbody.innerHTML = "";
@@ -781,7 +962,7 @@ function renderTable(rows) {
         <td colspan="5" class="empty-state">
           <div class="empty-content">
             <span class="empty-icon">🔍</span>
-            <p>ไม่พบข้อมูลในช่วงเวลาที่เลือก</p>
+            <p>${emptyHtml}</p>
           </div>
         </td>
       </tr>`;
