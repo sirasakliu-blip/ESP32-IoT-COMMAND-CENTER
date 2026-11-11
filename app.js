@@ -52,6 +52,32 @@ const sourceBadge = document.getElementById("sourceBadge");
 const dateInput = document.getElementById("date");
 const startInput = document.getElementById("start");
 const endInput = document.getElementById("end");
+
+// ===== ตัวเลือกเวลาแบบเลื่อน (ชั่วโมง : นาที) ใช้ได้เหมือนกันทั้งคอม มือถือ iPad =====
+// ค่าจริงเก็บใน <input type="hidden" id="start"/"end"> รูปแบบ HH:MM เหมือนเดิม
+function buildTimeSelect(hidden) {
+  if (!hidden) return;
+  const box = document.querySelector(`.time-select[data-for="${hidden.id}"]`);
+  if (!box) return;
+  const hSel = box.querySelector(".ts-h"), mSel = box.querySelector(".ts-m");
+  const pad = (n) => String(n).padStart(2, "0");
+  for (let i = 0; i < 24; i++) hSel.add(new Option(pad(i), pad(i)));
+  for (let i = 0; i < 60; i++) mSel.add(new Option(pad(i), pad(i)));
+  const toSelect = () => {
+    const [h, m] = (hidden.value || "00:00").split(":");
+    hSel.value = pad(Number(h) || 0); mSel.value = pad(Number(m) || 0);
+  };
+  const toHidden = () => { hidden.value = `${hSel.value}:${mSel.value}`; };
+  hSel.addEventListener("change", toHidden);
+  mSel.addEventListener("change", toHidden);
+  hidden.syncTimeSelect = toSelect;
+  toSelect();
+}
+function syncTimeSelects() {
+  [startInput, endInput].forEach((el) => el && el.syncTimeSelect && el.syncTimeSelect());
+}
+buildTimeSelect(startInput);
+buildTimeSelect(endInput);
 const searchBtn = document.getElementById("searchBtn");
 const exportCsvBtn = document.getElementById("exportCsvBtn");
 const summaryEl = document.getElementById("summary");
@@ -86,6 +112,7 @@ const LIVE_URL =
   "https://temp-humid-esp32-db4b9-default-rtdb.asia-southeast1.firebasedatabase.app/live.json";
 const LIVE_FRESH_SEC = 10; // ไม่มีค่าใหม่เกิน 10 วิ = ถือว่าบอร์ดหยุดส่ง
 let liveTs = 0;
+let liveArrivedAt = 0; // เวลาที่ "ได้รับค่าใหม่" บนเครื่องผู้ชม (ไม่พึ่งนาฬิกาเครื่องผู้ชมตรงกับบอร์ด)
 let isDemoMode = false;
 let isSheetMode = false;
 let currentSource = "none";
@@ -369,15 +396,26 @@ function updateChart(chart, rows, opts = {}) {
 function isNarrow() { return window.innerWidth <= 600; }
 function applyResponsiveChart(chart) {
   if (!chart) return;
-  const n = isNarrow(), sc = chart.options.scales, pl = chart.options.plugins;
+  // แก้ที่ options ดิบ (chart.config.options) เท่านั้น — ห้ามเอาอ็อบเจกต์จาก chart.options
+  // ไปใส่กลับ เพราะเป็น Proxy ซ้อนกันจน Safari/มือถือ error "Maximum call stack size exceeded"
+  const raw = chart.config && chart.config.options;
+  if (!raw) return;
+  const n = isNarrow();
+  const sc = raw.scales || {};
   ["x", "yT", "yH"].forEach((k) => {
-    if (!sc[k]) return;
-    if (sc[k].title) sc[k].title.display = !n;
-    sc[k].ticks = sc[k].ticks || {};
-    sc[k].ticks.font = { size: n ? 10 : 11 };
+    const a = sc[k];
+    if (!a) return;
+    if (a.title) a.title.display = !n;
+    if (!a.ticks) a.ticks = {};
+    if (!a.ticks.font) a.ticks.font = {};
+    a.ticks.font.size = n ? 10 : 11;
   });
-  if (pl.legend && pl.legend.labels) { pl.legend.labels.font.size = n ? 11 : 12; pl.legend.align = n ? "center" : "end"; }
-  if (pl.title) pl.title.font.size = n ? 11.5 : 13;
+  const pl = raw.plugins || {};
+  if (pl.legend) {
+    pl.legend.align = n ? "center" : "end";
+    if (pl.legend.labels && pl.legend.labels.font) pl.legend.labels.font.size = n ? 11 : 12;
+  }
+  if (pl.title && pl.title.font) pl.title.font.size = n ? 11.5 : 13;
 }
 let __lastNarrow = null;
 window.addEventListener("resize", () => {
@@ -638,11 +676,7 @@ async function fetchFromGoogleSheet(inputUrl, isBackground = false) {
     }
 
     if (rows.length === 0) {
-      if (statusEl) {
-        statusEl.textContent = "● ออนไลน์";
-        statusEl.className = "status online";
-      }
-      return true;
+      return true; // สถานะออนไลน์/ออฟไลน์ ดูจากบอร์ดโดยตรง (checkStatus)
     }
 
     rows.sort((a, b) => a.ts - b.ts);
@@ -851,26 +885,27 @@ function updateMinMaxSub(rows) {
   }
 }
 
-// ตรวจสอบสถานะการเชื่อมต่อ (ถ้าไม่มีข้อมูลเกิน 10 นาที ถือว่าออฟไลน์)
+// สถานะบอร์ด: ออนไลน์ = บอร์ดส่งค่าสดเข้ามาภายใน 10 วินาทีล่าสุด, ไม่งั้น = ออฟไลน์
+const PAGE_OPENED = Date.now();
 function checkStatus() {
   if (!statusEl) return;
-  if (isLiveFresh()) {
-    statusEl.textContent = "● ออนไลน์ (Live)";
-    statusEl.className = "status online";
-    return;
-  }
-  if (latestTs === 0) return;
-  const ageMin = (Date.now() / 1000 - latestTs) / 60;
-  if (ageMin <= 10) {
+  const fresh = isLiveFresh();
+  document.body.classList.toggle("board-offline", !fresh && Date.now() - PAGE_OPENED > 12000);
+  if (fresh) {
     statusEl.textContent = "● ออนไลน์";
     statusEl.className = "status online";
+    statusEl.title = "บอร์ด ESP32 กำลังส่งข้อมูลสด";
+  } else if (Date.now() - PAGE_OPENED <= 12000) {
+    statusEl.textContent = "● กำลังเชื่อมต่อ...";
+    statusEl.className = "status";
   } else {
-    statusEl.textContent = "● ออฟไลน์ (ไม่มีข้อมูลใหม่เกิน 10 นาที)";
+    statusEl.textContent = "● ออฟไลน์";
     statusEl.className = "status offline";
+    statusEl.title = "ไม่ได้รับข้อมูลจากบอร์ดเกิน 10 วินาที (บอร์ดถูกถอด/ไม่มี WiFi)";
   }
 }
 
-setInterval(checkStatus, 3000);
+setInterval(checkStatus, 1000);
 
 // ==========================================================================
 // ===== 6. การค้นหาข้อมูลตามช่วงเวลา =====
@@ -880,6 +915,7 @@ if (quickTodayBtn) {
     if (dateInput) dateInput.value = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Bangkok" });
     if (startInput) startInput.value = "00:00";
     if (endInput) endInput.value = "23:59";
+    syncTimeSelects();
     if (searchBtn) searchBtn.click();
   });
 }
@@ -1372,14 +1408,21 @@ if (clearConfigBtn) {
 // ==========================================================================
 
 function isLiveFresh() {
-  return liveTs > 0 && Date.now() / 1000 - liveTs <= LIVE_FRESH_SEC;
+  return liveArrivedAt > 0 && Date.now() - liveArrivedAt <= LIVE_FRESH_SEC * 1000;
 }
 
 function showLive(r) {
   if (!r || r.ts === undefined) return;
   const t = Number(r.temp), h = Number(r.hum);
   if (isNaN(t) || isNaN(h)) return;
-  liveTs = Number(r.ts);
+  const newTs = Number(r.ts);
+  if (liveTs === 0) {
+    // ค่าแรกตอนเปิดเว็บ อาจเป็นค่าเก่าค้างไว้ตอนบอร์ดถูกถอด → นับว่าสดเฉพาะเมื่ออายุไม่เกิน 10 วิ
+    if (Math.abs(Date.now() / 1000 - newTs) <= LIVE_FRESH_SEC) liveArrivedAt = Date.now();
+  } else if (newTs !== liveTs) {
+    liveArrivedAt = Date.now();
+  }
+  liveTs = newTs;
   latestTs = liveTs;
   if (tempEl) tempEl.textContent = t.toFixed(1);
   if (humEl) humEl.textContent = h.toFixed(1);

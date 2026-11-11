@@ -23,7 +23,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=4">
+  <link rel="stylesheet" href="style.css?v=6">
   
   <!-- Chart.js 4.4.1 ตามคู่มือขั้นที่ 5.2 -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -183,11 +183,17 @@
         </div>
         <div class="input-group">
           <label for="start"><span class="input-icon">⏰</span> ตั้งแต่</label>
-          <input type="time" id="start" value="11:00">
+          <input type="hidden" id="start" value="11:00">
+          <div class="time-select" data-for="start">
+            <select class="ts-h" aria-label="ชั่วโมงเริ่มต้น"></select><span class="ts-colon">:</span><select class="ts-m" aria-label="นาทีเริ่มต้น"></select><span class="ts-unit">น.</span>
+          </div>
         </div>
         <div class="input-group">
           <label for="end"><span class="input-icon">🏁</span> ถึง</label>
-          <input type="time" id="end" value="15:00">
+          <input type="hidden" id="end" value="15:00">
+          <div class="time-select" data-for="end">
+            <select class="ts-h" aria-label="ชั่วโมงสิ้นสุด"></select><span class="ts-colon">:</span><select class="ts-m" aria-label="นาทีสิ้นสุด"></select><span class="ts-unit">น.</span>
+          </div>
         </div>
         <div class="search-actions">
           <button id="searchBtn" class="btn-primary">
@@ -326,6 +332,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=4"></script>
+  <script type="module" src="app.js?v=6"></script>
 </body>
 </html>

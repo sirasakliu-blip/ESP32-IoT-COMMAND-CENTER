@@ -1414,3 +1414,24 @@ tbody tr:last-child td {
 .export-bar:empty { display: none; }
 .export-bar button { padding: 8px 14px; font-size: 13px; }
 @media (max-width: 768px) { .export-bar { justify-content: stretch; } .export-bar button { flex: 1 1 30%; } }
+
+/* ===== ตัวเลือกเวลาแบบเลื่อน (ชั่วโมง : นาที) ===== */
+.time-select {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--input-bg); border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm); padding: 0 10px; min-height: 44px; min-width: 0;
+}
+.time-select:focus-within { border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2); }
+.time-select select {
+  flex: 1 1 0; min-width: 0; width: 100%;
+  font-family: inherit; font-size: 16px; font-weight: 600; text-align: center; text-align-last: center;
+  color: var(--text-primary); background: transparent; border: none; outline: none;
+  padding: 10px 2px; cursor: pointer;
+  -webkit-appearance: none; appearance: none;
+}
+.time-select select option { color: #0f172a; background: #fff; }
+.time-select .ts-colon { font-weight: 700; color: var(--text-secondary); }
+.time-select .ts-unit { font-size: 13px; color: var(--text-secondary); }
+
+/* ===== บอร์ดออฟไลน์: หรี่ตัวเลขการ์ดให้รู้ว่าเป็นค่าเก่า ===== */
+body.board-offline .card h2 { opacity: .45; }
