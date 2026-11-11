@@ -184,14 +184,33 @@ const noDataPlugin = {
     // ขึ้นบรรทัดใหม่ที่ " — " และตัดคำเมื่อยาวเกินกรอบกราฟ (ไม่ล้นขอบทั้งมือถือ/iPad)
     const lines = [];
     msg.split(" — ").forEach((part, i) => {
-      ctx.font = i === 0 ? `700 ${narrow ? 14 : 16}px 'Prompt', sans-serif` : `500 ${narrow ? 12 : 13.5}px 'Prompt', sans-serif`;
-      let line = "";
-      part.split(" ").forEach((word) => {
-        const test = line ? line + " " + word : word;
-        if (ctx.measureText(test).width > maxW && line) { lines.push({ text: line, font: ctx.font }); line = word; }
-        else line = test;
-      });
-      if (line) lines.push({ text: line, font: ctx.font });
+      // ย่อขนาดตัวอักษรให้พอดีบรรทัดเดียว → ถ้ายังไม่พอ ตัดปี ค.ศ. ออก → สุดท้ายค่อยขึ้นบรรทัดใหม่
+      const weight = i === 0 ? 700 : 500;
+      let size = i === 0 ? (narrow ? 15 : 16) : (narrow ? 13 : 13.5);
+      const minSize = i === 0 ? 12 : 10.5;
+      const fit = (txt) => {
+        for (let sz = size; sz >= minSize; sz -= 0.5) {
+          ctx.font = `${weight} ${sz}px 'Prompt', sans-serif`;
+          if (ctx.measureText(txt).width <= maxW) return true;
+        }
+        return false;
+      };
+      let txt = part;
+      if (!fit(txt)) {
+        const short = txt.replace(/ \d{4}(?= )/g, "");
+        if (short !== txt) txt = short;
+        if (!fit(txt)) {
+          let line = "";
+          txt.split(" ").forEach((word) => {
+            const test = line ? line + " " + word : word;
+            if (ctx.measureText(test).width > maxW && line) { lines.push({ text: line, font: ctx.font }); line = word; }
+            else line = test;
+          });
+          if (line) lines.push({ text: line, font: ctx.font });
+          return;
+        }
+      }
+      lines.push({ text: txt, font: ctx.font });
     });
     const lh = narrow ? 20 : 24;
     const boxW = Math.min(maxW + 16, Math.max(...lines.map((l) => { ctx.font = l.font; return ctx.measureText(l.text).width; })) + 32);
