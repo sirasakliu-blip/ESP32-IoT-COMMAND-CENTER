@@ -361,15 +361,42 @@ function updateChart(chart, rows, opts = {}) {
   const title = chart.options.plugins.title;
   if (opts.title !== undefined) { title.text = opts.title; title.display = !!opts.title; }
   chart.$emptyMessage = opts.emptyMessage;
+  applyResponsiveChart(chart);
   chart.update();
 }
+
+// จอแคบ (มือถือ) → ซ่อนชื่อแกน, ตัวอักษรเล็กลง, ขีดเวลาน้อยลง
+function isNarrow() { return window.innerWidth <= 600; }
+function applyResponsiveChart(chart) {
+  if (!chart) return;
+  const n = isNarrow(), sc = chart.options.scales, pl = chart.options.plugins;
+  ["x", "yT", "yH"].forEach((k) => {
+    if (!sc[k]) return;
+    if (sc[k].title) sc[k].title.display = !n;
+    sc[k].ticks = sc[k].ticks || {};
+    sc[k].ticks.font = { size: n ? 10 : 11 };
+  });
+  if (pl.legend && pl.legend.labels) { pl.legend.labels.font.size = n ? 11 : 12; pl.legend.align = n ? "center" : "end"; }
+  if (pl.title) pl.title.font.size = n ? 11.5 : 13;
+}
+let __lastNarrow = null;
+window.addEventListener("resize", () => {
+  const n = isNarrow();
+  if (n === __lastNarrow) return;
+  __lastNarrow = n;
+  ["liveChart", "rangeChart"].forEach((id) => {
+    const ch = window.Chart && Chart.getChart(id);
+    if (ch) { applyResponsiveChart(ch); ch.update("none"); }
+  });
+});
 
 // แกนเวลา: เลือกระยะห่างขีดเป็นนาทีกลมๆ (5, 10, 15, 30 นาที, 1, 2, 3 ชม. ...) ไม่เกิน ~8 ขีด
 // roundEnds = true จะขยายขอบซ้าย/ขวาให้ตรงขีดพอดี (ใช้กับกราฟข้อมูลทั้งหมด/24 ชม.)
 function setTimeAxis(x, minMs, maxMs, roundEnds) {
   const steps = [1, 2, 5, 10, 15, 30, 60, 120, 180, 240, 360, 720, 1440];
   const spanMin = (maxMs - minMs) / 60000;
-  const stepMin = steps.find((m) => spanMin / m <= 8) || 1440;
+  const maxTicks = isNarrow() ? 5 : 8; // มือถือแสดงขีดเวลาน้อยลงไม่ให้ทับกัน
+  const stepMin = steps.find((m) => spanMin / m <= maxTicks) || 1440;
   const stepMs = stepMin * 60000;
   const off = 7 * 3600 * 1000; // ให้ขีดตรงเวลาไทย
   if (roundEnds) {
