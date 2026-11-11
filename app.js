@@ -30,6 +30,12 @@ const DEFAULT_GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycbzwn88
 // ===== 1. ตัวแปรสถานะและ DOM Elements =====
 // ==========================================================================
 const htmlRoot = document.documentElement;
+
+// ===== โหมดผู้ดูแล =====
+// หน้าเว็บปกติ: ซ่อนปุ่มตั้งค่า/Demo และใช้แหล่งข้อมูลที่กำหนดในโค้ดเสมอ (ทุกคนเห็นเหมือนกัน)
+// ผู้ดูแลเปิดหน้าตั้งค่าได้ที่ลิงก์:  https://<เว็บ>/?admin
+// หมายเหตุ: นี่คือการซ่อนจากผู้ใช้ทั่วไป ไม่ใช่ระบบความปลอดภัย และค่าที่ตั้งจะมีผลเฉพาะเบราว์เซอร์ของคนที่ตั้งเท่านั้น
+const ADMIN_MODE = new URLSearchParams(location.search).has("admin");
 const themeToggleBtn = document.getElementById("themeToggleBtn");
 const statusEl = document.getElementById("status");
 const tempEl = document.getElementById("temp");
@@ -673,7 +679,8 @@ async function fetchFromGoogleSheet(inputUrl, isBackground = false) {
 // ===== 5. ตรวจสอบแหล่งข้อมูลเริ่มต้น =====
 // ==========================================================================
 function getSavedConfig() {
-  const savedSheet = localStorage.getItem("esp32_sheet_url") || DEFAULT_GOOGLE_SHEET_URL;
+  // ผู้ใช้ทั่วไปใช้ URL ในโค้ดเสมอ ค่าที่เคยบันทึกในเบราว์เซอร์ใช้เฉพาะโหมดผู้ดูแล
+  const savedSheet = (ADMIN_MODE && localStorage.getItem("esp32_sheet_url")) || DEFAULT_GOOGLE_SHEET_URL;
   if (savedSheet && savedSheet.trim() !== "") {
     return { type: "sheet", url: savedSheet.trim() };
   }
@@ -682,7 +689,7 @@ function getSavedConfig() {
     return { type: "firebase", config: firebaseConfig };
   }
 
-  const savedFb = localStorage.getItem("esp32_firebase_config");
+  const savedFb = ADMIN_MODE ? localStorage.getItem("esp32_firebase_config") : null;
   if (savedFb) {
     try {
       const parsed = JSON.parse(savedFb);
@@ -1017,27 +1024,112 @@ function renderSummary(rows, startTime = "", endTime = "") {
     `ความชื้น ต่ำสุด ${minH} สูงสุด ${maxH} เฉลี่ย ${avgH} %`;
 }
 
+// ===== ดาวน์โหลดข้อมูล: CSV (ตาราง), PNG (กราฟ), รายงาน PDF (กราฟ + สรุป + ตาราง) =====
+let exportRows = [];
+
 function setupExportCsv(rows) {
-  if (!exportCsvBtn) return;
-  if (!rows || rows.length === 0) {
-    exportCsvBtn.style.display = "none";
-    return;
-  }
-  exportCsvBtn.style.display = "inline-flex";
-  exportCsvBtn.onclick = () => {
-    let csv = "\uFEFFลำดับ,วันที่,เวลา,อุณหภูมิ (°C),ความชื้น (%)\n";
-    rows.forEach((r, i) => {
-      csv += `${i + 1},"${r.date}","${r.time}",${r.temp.toFixed(1)},${r.hum.toFixed(1)}\n`;
-    });
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `esp32-data-${rows[0].date}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
+  exportRows = rows || [];
+  const show = exportRows.length > 0 ? "inline-flex" : "none";
+  [exportCsvBtn, document.getElementById("exportPngBtn"), document.getElementById("exportReportBtn")]
+    .forEach((b) => { if (b) b.style.display = show; });
 }
+
+function exportFileName(ext) {
+  const r = exportRows;
+  return r.length ? `esp32-${r[0].date}_${r[0].time.slice(0, 5).replace(":", "")}-${r[r.length - 1].time.slice(0, 5).replace(":", "")}.${ext}` : `esp32.${ext}`;
+}
+
+function downloadUrl(url, name) {
+  const a = document.createElement("a");
+  a.href = url; a.download = name; a.click();
+}
+
+// CSV: วันที่/เวลาเป็นข้อความ เพื่อไม่ให้ Excel แปลงรูปแบบเอง (เช่น 12-11-26)
+if (exportCsvBtn) exportCsvBtn.onclick = () => {
+  if (!exportRows.length) return;
+  let csv = "\uFEFFลำดับ,วันที่,เวลา,อุณหภูมิ (°C),ความชื้น (%)\n";
+  exportRows.forEach((r, i) => {
+    csv += `${i + 1},="${r.date}",="${r.time}",${r.temp.toFixed(1)},${r.hum.toFixed(1)}\n`;
+  });
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
+  downloadUrl(url, exportFileName("csv"));
+  URL.revokeObjectURL(url);
+};
+
+// รูปกราฟพื้นหลังทึบ (กราฟจริงโปร่งใส ถ้าไม่เติมพื้นจะดำในบางโปรแกรม)
+function chartImage(chart) {
+  const src = chart.canvas;
+  const out = document.createElement("canvas");
+  out.width = src.width; out.height = src.height;
+  const ctx = out.getContext("2d");
+  ctx.fillStyle = getThemeColors().isDark ? "#0f172a" : "#ffffff";
+  ctx.fillRect(0, 0, out.width, out.height);
+  ctx.drawImage(src, 0, 0);
+  return out.toDataURL("image/png");
+}
+
+const exportPngBtn = document.getElementById("exportPngBtn");
+if (exportPngBtn) exportPngBtn.onclick = () => {
+  if (!rangeChart || !exportRows.length) return;
+  downloadUrl(chartImage(rangeChart), exportFileName("png"));
+};
+
+// รายงาน: เปิดหน้าพร้อมพิมพ์ แล้วเลือก "บันทึกเป็น PDF" ในหน้าต่างพิมพ์
+const exportReportBtn = document.getElementById("exportReportBtn");
+if (exportReportBtn) exportReportBtn.onclick = () => {
+  if (!rangeChart || !exportRows.length) return;
+  // ใช้ธีมสว่างสำหรับรายงานเสมอ
+  const wasDark = getThemeColors().isDark;
+  if (wasDark) { htmlRoot.setAttribute("data-theme", "light"); updateChartsTheme(); }
+  rangeChart.resize(1000, 420);
+  const img = chartImage(rangeChart);
+  rangeChart.resize();
+  if (wasDark) { htmlRoot.setAttribute("data-theme", "dark"); updateChartsTheme(); }
+
+  const rows = exportRows;
+  const t = rows.map((r) => r.temp), h = rows.map((r) => r.hum);
+  const avg = (a) => (a.reduce((x, y) => x + y, 0) / a.length).toFixed(1);
+  const title = rangeChart.options.plugins.title.text || rangeTitle(rows);
+  const now = Date.now();
+  const tableRows = rows.map((r, i) =>
+    `<tr><td>${i + 1}</td><td>${r.date}</td><td>${r.time}</td><td>${r.temp.toFixed(1)}</td><td>${r.hum.toFixed(1)}</td></tr>`).join("");
+
+  const w = window.open("", "_blank");
+  if (!w) { alert("เบราว์เซอร์บล็อกหน้าต่างใหม่ กรุณาอนุญาต Pop-up แล้วลองอีกครั้ง"); return; }
+  w.document.write(`<!DOCTYPE html><html lang="th"><head><meta charset="utf-8">
+<title>รายงาน ${exportFileName("pdf")}</title>
+<style>
+  @page { size: A4; margin: 14mm; }
+  body { font-family: "Prompt", "Sarabun", "Tahoma", sans-serif; color: #0f172a; margin: 0; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: #64748b; font-size: 12px; margin-bottom: 14px; }
+  .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 12px 0; }
+  .kpi { border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px; }
+  .kpi b { display: block; font-size: 18px; }
+  .kpi span { font-size: 11px; color: #64748b; }
+  img { width: 100%; border: 1px solid #e2e8f0; border-radius: 8px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 12px; }
+  th, td { border-bottom: 1px solid #e2e8f0; padding: 5px 6px; text-align: center; }
+  th { background: #f1f5f9; }
+  tr { page-break-inside: avoid; }
+  .hint { background: #fef9c3; padding: 8px 12px; border-radius: 6px; font-size: 13px; margin-bottom: 12px; }
+  @media print { .hint { display: none; } }
+</style></head><body>
+<div class="hint">💡 เลือกเครื่องพิมพ์เป็น <b>"บันทึกเป็น PDF" / "Save as PDF"</b> เพื่อดาวน์โหลดเป็นไฟล์ PDF</div>
+<h1>รายงานอุณหภูมิและความชื้น (ESP32 + DHT11)</h1>
+<div class="sub">${title}<br>ออกรายงานเมื่อ ${fmtThDate(now)} ${fmtThTime(now)} น.</div>
+<div class="kpis">
+  <div class="kpi"><span>อุณหภูมิเฉลี่ย</span><b>${avg(t)} °C</b><span>ต่ำสุด ${Math.min(...t).toFixed(1)} · สูงสุด ${Math.max(...t).toFixed(1)} °C</span></div>
+  <div class="kpi"><span>ความชื้นเฉลี่ย</span><b>${avg(h)} %</b><span>ต่ำสุด ${Math.min(...h).toFixed(1)} · สูงสุด ${Math.max(...h).toFixed(1)} %</span></div>
+  <div class="kpi"><span>จำนวนข้อมูล</span><b>${rows.length} จุด</b><span>${rows[0].date} ${rows[0].time} – ${rows[rows.length - 1].date} ${rows[rows.length - 1].time}</span></div>
+</div>
+<img src="${img}" alt="กราฟอุณหภูมิและความชื้น">
+<table><thead><tr><th>ลำดับ</th><th>วันที่</th><th>เวลา</th><th>อุณหภูมิ (°C)</th><th>ความชื้น (%)</th></tr></thead>
+<tbody>${tableRows}</tbody></table>
+<script>window.onload = () => setTimeout(() => window.print(), 300);<\/script>
+</body></html>`);
+  w.document.close();
+};
 
 // ==========================================================================
 // ===== 7. โหมดจำลองข้อมูล (DEMO DATA SIMULATION) =====
@@ -1150,6 +1242,9 @@ function closeModal() {
   if (configModal) configModal.style.display = "none";
 }
 
+if (!ADMIN_MODE) {
+  [configToggleBtn, openConfigBtn, loadDemoBtn].forEach((b) => { if (b) b.style.display = "none"; });
+}
 if (openConfigBtn) openConfigBtn.addEventListener("click", openModal);
 if (configToggleBtn) configToggleBtn.addEventListener("click", openModal);
 if (closeModalBtn) closeModalBtn.addEventListener("click", closeModal);

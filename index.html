@@ -194,10 +194,20 @@
             <span>ค้นหาข้อมูล</span>
             <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </button>
-          <button id="exportCsvBtn" class="btn-outline" style="display: none;">
-            📥 ส่งออก CSV
-          </button>
         </div>
+      </div>
+
+      <!-- ปุ่มดาวน์โหลดผลการค้นหา -->
+      <div class="export-bar">
+        <button id="exportCsvBtn" class="btn-outline" style="display: none;" title="ตารางข้อมูล เปิดด้วย Excel ได้">
+            📥 ตาราง (CSV)
+        </button>
+        <button id="exportPngBtn" class="btn-outline" style="display: none;" title="รูปกราฟของช่วงที่เลือก">
+            🖼️ กราฟ (PNG)
+        </button>
+        <button id="exportReportBtn" class="btn-outline" style="display: none;" title="กราฟ + สรุป + ตาราง ในไฟล์เดียว">
+            📄 รายงาน (PDF)
+        </button>
       </div>
 
       <!-- ช่วงข้อมูลที่มีอยู่จริง (อัปเดตอัตโนมัติ) -->

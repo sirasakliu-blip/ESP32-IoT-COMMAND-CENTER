@@ -1340,3 +1340,9 @@ tbody tr:last-child td {
 .range-hint strong { color: var(--text-main, inherit); }
 .range-hint a { color: var(--primary-color, #0284c7); font-weight: 600; text-decoration: underline; }
 .empty-state small { display: block; margin-top: 6px; opacity: .8; }
+
+/* ===== แถบปุ่มดาวน์โหลด ===== */
+.export-bar { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 10px; }
+.export-bar:empty { display: none; }
+.export-bar button { padding: 8px 14px; font-size: 13px; }
+@media (max-width: 768px) { .export-bar { justify-content: stretch; } .export-bar button { flex: 1 1 30%; } }
