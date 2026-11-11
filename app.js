@@ -75,6 +75,11 @@ const loadDemoBtn = document.getElementById("loadDemoBtn");
 let db = null;
 let readingsRef = null;
 let latestTs = 0;
+// ค่าสดจาก Firebase /live (ดูส่วนที่ 9 ท้ายไฟล์)
+const LIVE_URL =
+  "https://temp-humid-esp32-db4b9-default-rtdb.asia-southeast1.firebasedatabase.app/live.json";
+const LIVE_FRESH_SEC = 10; // ไม่มีค่าใหม่เกิน 10 วิ = ถือว่าบอร์ดหยุดส่ง
+let liveTs = 0;
 let isDemoMode = false;
 let isSheetMode = false;
 let currentSource = "none";
@@ -463,17 +468,21 @@ async function fetchFromGoogleSheet(inputUrl, isBackground = false) {
     currentSource = "sheet";
 
     const last = rows[rows.length - 1];
-    if (tempEl) tempEl.textContent = last.temp.toFixed(1);
-    if (humEl) humEl.textContent = last.hum.toFixed(1);
-    if (updatedEl) updatedEl.textContent = `${last.date} ${last.time}`;
-    latestTs = last.ts;
+    // การ์ดค่าปัจจุบันใช้ค่าสดจาก Firebase /live เป็นหลัก
+    // ใช้ค่าจากชีตเฉพาะตอนที่ยังไม่มีค่าสด (เช่น บอร์ดออฟไลน์)
+    if (!isLiveFresh()) {
+      if (tempEl) tempEl.textContent = last.temp.toFixed(1);
+      if (humEl) humEl.textContent = last.hum.toFixed(1);
+      if (updatedEl) updatedEl.textContent = `${last.date} ${last.time}`;
+      latestTs = last.ts;
+      updateMetricPills(last.temp, last.hum);
+    }
 
     if (sourceBadge) {
       sourceBadge.textContent = "📊 แหล่งข้อมูล: Google Sheet";
       sourceBadge.style.color = "var(--primary-color)";
     }
 
-    updateMetricPills(last.temp, last.hum);
     updateMinMaxSub(rows);
     checkStatus();
 
@@ -537,7 +546,7 @@ if (activeSource) {
     if (sheetPollTimer) clearInterval(sheetPollTimer);
     sheetPollTimer = setInterval(() => {
       if (isSheetMode) fetchFromGoogleSheet(activeSource.url, true);
-    }, 5000);
+    }, 30000);
   } else if (activeSource.type === "firebase") {
     initFirebaseApp(activeSource.config);
   }
@@ -652,7 +661,13 @@ function updateMinMaxSub(rows) {
 
 // ตรวจสอบสถานะการเชื่อมต่อ (ถ้าไม่มีข้อมูลเกิน 10 นาที ถือว่าออฟไลน์)
 function checkStatus() {
-  if (!statusEl || latestTs === 0) return;
+  if (!statusEl) return;
+  if (isLiveFresh()) {
+    statusEl.textContent = "● ออนไลน์ (Live)";
+    statusEl.className = "status online";
+    return;
+  }
+  if (latestTs === 0) return;
   const ageMin = (Date.now() / 1000 - latestTs) / 60;
   if (ageMin <= 10) {
     statusEl.textContent = "● ออนไลน์";
@@ -663,7 +678,7 @@ function checkStatus() {
   }
 }
 
-setInterval(checkStatus, 30000);
+setInterval(checkStatus, 3000);
 
 // ==========================================================================
 // ===== 6. การค้นหาข้อมูลตามช่วงเวลา =====
@@ -1044,3 +1059,52 @@ if (clearConfigBtn) {
     }
   });
 }
+
+
+// ==========================================================================
+// ===== 9. ค่าสดแบบเรียลไทม์จาก Firebase /live =====
+// บอร์ด ESP32 เขียนทับค่าดิบที่ /live ทุก 1 วินาที
+// เว็บรับค่าผ่าน Firebase REST streaming (EventSource) ได้ทันทีที่บอร์ดเขียน
+// การบันทึกลง Google Sheet ทุก 5 นาที ทำโดย Apps Script (snapshotLiveToSheet)
+// ==========================================================================
+
+function isLiveFresh() {
+  return liveTs > 0 && Date.now() / 1000 - liveTs <= LIVE_FRESH_SEC;
+}
+
+function showLive(r) {
+  if (!r || r.ts === undefined) return;
+  const t = Number(r.temp), h = Number(r.hum);
+  if (isNaN(t) || isNaN(h)) return;
+  liveTs = Number(r.ts);
+  latestTs = liveTs;
+  if (tempEl) tempEl.textContent = t.toFixed(1);
+  if (humEl) humEl.textContent = h.toFixed(1);
+  if (updatedEl) updatedEl.textContent = `${r.date} ${r.time}`;
+  updateMetricPills(t, h);
+  checkStatus();
+}
+
+function fetchLiveOnce() {
+  fetch(LIVE_URL + "?t=" + Date.now(), { cache: "no-store" })
+    .then((res) => res.json())
+    .then(showLive)
+    .catch(() => {});
+}
+
+function startLiveStream() {
+  if (!("EventSource" in window)) {
+    setInterval(fetchLiveOnce, 1000); // สำรองสำหรับเบราว์เซอร์เก่า
+    return;
+  }
+  const stream = new EventSource(LIVE_URL);
+  stream.addEventListener("put", (e) => {
+    const msg = JSON.parse(e.data); // { path: "/", data: {...} }
+    if (msg.path === "/") showLive(msg.data);
+    else fetchLiveOnce();
+  });
+  stream.addEventListener("patch", fetchLiveOnce);
+  stream.onerror = () => console.warn("Live stream: กำลังเชื่อมต่อใหม่...");
+}
+
+startLiveStream();
