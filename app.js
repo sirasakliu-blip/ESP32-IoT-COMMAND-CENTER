@@ -173,13 +173,49 @@ const noDataPlugin = {
     if (hasData) return;
     const { ctx, chartArea } = chart;
     if (!chartArea) return;
+    const areaW = chartArea.right - chartArea.left;
+    const maxW = areaW - 24;
+    const cx = (chartArea.left + chartArea.right) / 2;
+    const cy = (chartArea.top + chartArea.bottom) / 2;
+    const narrow = areaW < 420;
+    const msg = chart.$emptyMessage || "ไม่มีข้อมูลในช่วงเวลานี้";
+
     ctx.save();
-    ctx.textAlign = "center";
+    // ขึ้นบรรทัดใหม่ที่ " — " และตัดคำเมื่อยาวเกินกรอบกราฟ (ไม่ล้นขอบทั้งมือถือ/iPad)
+    const lines = [];
+    msg.split(" — ").forEach((part, i) => {
+      ctx.font = i === 0 ? `700 ${narrow ? 14 : 16}px 'Prompt', sans-serif` : `500 ${narrow ? 12 : 13.5}px 'Prompt', sans-serif`;
+      let line = "";
+      part.split(" ").forEach((word) => {
+        const test = line ? line + " " + word : word;
+        if (ctx.measureText(test).width > maxW && line) { lines.push({ text: line, font: ctx.font }); line = word; }
+        else line = test;
+      });
+      if (line) lines.push({ text: line, font: ctx.font });
+    });
+    const lh = narrow ? 20 : 24;
+    const boxW = Math.min(maxW + 16, Math.max(...lines.map((l) => { ctx.font = l.font; return ctx.measureText(l.text).width; })) + 32);
+    const boxH = lines.length * lh + 20;
+    const theme = getThemeColors();
+    // กล่องพื้นหลังกลางกราฟ
+    ctx.fillStyle = theme.tooltipBg || "rgba(15,23,42,.85)";
+    ctx.globalAlpha = 0.9;
+    const bx = cx - boxW / 2, by = cy - boxH / 2, r = 10;
+    ctx.beginPath();
+    ctx.moveTo(bx + r, by); ctx.arcTo(bx + boxW, by, bx + boxW, by + boxH, r); ctx.arcTo(bx + boxW, by + boxH, bx, by + boxH, r);
+    ctx.arcTo(bx, by + boxH, bx, by, r); ctx.arcTo(bx, by, bx + boxW, by, r); ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = theme.tooltipBorder || "rgba(148,163,184,.4)"; ctx.lineWidth = 1; ctx.stroke();
+    // วาดชิดซ้ายแล้วคำนวณจุดเริ่มเอง (Safari บางรุ่นจัดกลางด้วย textAlign ผิดตำแหน่ง)
+    ctx.textAlign = "left";
     ctx.textBaseline = "middle";
-    ctx.fillStyle = getThemeColors().tickColor;
-    ctx.font = "600 15px 'Prompt', sans-serif";
-    ctx.fillText(chart.$emptyMessage || "ไม่มีข้อมูลในช่วงเวลานี้",
-      (chartArea.left + chartArea.right) / 2, (chartArea.top + chartArea.bottom) / 2);
+    ctx.direction = "ltr";
+    lines.forEach((l, i) => {
+      ctx.font = l.font;
+      ctx.fillStyle = i === 0 ? (theme.tooltipTitle || theme.tickColor) : (theme.tooltipBody || theme.tickColor);
+      const w = ctx.measureText(l.text).width;
+      ctx.fillText(l.text, cx - w / 2, by + 10 + lh / 2 + i * lh);
+    });
     ctx.restore();
   }
 };
