@@ -127,7 +127,15 @@ function syncTimeSelects() {
 buildTimeSelect(startInput);
 buildTimeSelect(endInput);
 if (dateInput) {
-  dateInput.addEventListener("change", updateOvernightIndicator);
+  dateInput.addEventListener("change", () => {
+    if (startInput && !startInput.value) startInput.value = "00:00";
+    if (endInput && !endInput.value) endInput.value = "23:59";
+    syncTimeSelects();
+    updateOvernightIndicator();
+    if (dateInput.value) {
+      runSearch(true);
+    }
+  });
 }
 updateOvernightIndicator();
 const searchBtn = document.getElementById("searchBtn");
@@ -182,6 +190,9 @@ if (dateInput) {
   dateInput.removeAttribute("min");
   dateInput.removeAttribute("max");
 }
+if (startInput && !startInput.value) startInput.value = "00:00";
+if (endInput && !endInput.value) endInput.value = "23:59";
+syncTimeSelects();
 
 // นาฬิกาดิจิทัลเรียลไทม์ (เวลาไทย)
 function updateClock() {
@@ -316,7 +327,7 @@ function makeChart(id) {
       labels: [],
       datasets: [
         {
-          label: "🌡️ อุณหภูมิ (°C) [เส้นทึบ]",
+          label: "🌡️ อุณหภูมิ (°C)",
           data: [],
           borderColor: "#ff5e36",
           backgroundColor: tempGrad,
@@ -335,7 +346,7 @@ function makeChart(id) {
           fill: true
         },
         {
-          label: "💧 ความชื้น (%) [เส้นประ]",
+          label: "💧 ความชื้น (%)",
           data: [],
           borderColor: "#0ea5e9",
           backgroundColor: humGrad,
@@ -343,14 +354,14 @@ function makeChart(id) {
           tension: 0.3,
           cubicInterpolationMode: "monotone", // เส้นโค้งไม่พุ่งเกินค่าจริง
           spanGaps: false,                     // ช่วงที่ไม่มีข้อมูลจะเว้นว่าง ไม่ลากเส้นหลอก
-          borderDash: [6, 4],                  // เส้นประชัดเจนสำหรับความชื้น แยกออกได้ทันที
+          borderDash: [],                      // เส้นทึบเรียบเนียนเหมือนอุณหภูมิ
           pointRadius: 0,
           pointHitRadius: 10,
           pointHoverRadius: 7,
           pointHoverBackgroundColor: "#0ea5e9",
           pointHoverBorderColor: "#ffffff",
           pointHoverBorderWidth: 2.5,
-          borderWidth: 2.8,
+          borderWidth: 3,
           fill: true
         }
       ]
@@ -391,7 +402,7 @@ function makeChart(id) {
             const ci = legend.chart;
             ci.data.datasets[0].borderWidth = 3;
             ci.data.datasets[0].borderColor = "#ff5e36";
-            ci.data.datasets[1].borderWidth = 2.8;
+            ci.data.datasets[1].borderWidth = 3;
             ci.data.datasets[1].borderColor = "#0ea5e9";
             ci.update('none');
           },
@@ -420,8 +431,8 @@ function makeChart(id) {
             // หัว tooltip: วันที่ + เวลา (เช่น 12 พ.ย. 2026 · 00:24:10 น.)
             title: (items) => items.length ? `📅 ${fmtThDate(items[0].parsed.x)} · ⏰ ${fmtThTime(items[0].parsed.x, true)} น.` : "",
             label: (item) => item.datasetIndex === 0
-              ? ` 🌡️ อุณหภูมิ: ${item.parsed.y.toFixed(1)} °C (เส้นทึบสีส้ม)`
-              : ` 💧 ความชื้น: ${item.parsed.y.toFixed(1)} % (เส้นประสีฟ้า)`
+              ? ` 🌡️ อุณหภูมิ: ${item.parsed.y.toFixed(1)} °C`
+              : ` 💧 ความชื้น: ${item.parsed.y.toFixed(1)} %`
           }
         }
       },
@@ -1166,14 +1177,25 @@ function clearSearch() {
   updateDataRangeHint(rows);
 }
 
-// silent = true: เรียกจากการรีเฟรชอัตโนมัติ (ไม่แสดง alert)
+// silent = true: เรียกจากการรีเฟรชอัตโนมัติหรือเปลี่ยนวันที่ (ไม่แสดง alert)
 async function runSearch(silent = false) {
   const d = dateInput ? dateInput.value : "";
-  const s = startInput ? startInput.value : "";
-  const e = endInput ? endInput.value : "";
+  let s = startInput ? startInput.value : "";
+  let e = endInput ? endInput.value : "";
   const warn = (msg) => { if (!silent) alert(msg); };
 
-  if (!d || !s || !e) { warn("กรุณาเลือกวันที่และเวลาให้ครบถ้วน"); return; }
+  if (!d) { warn("กรุณาเลือกวันที่ที่ต้องการค้นหา"); return; }
+
+  // หากเว้นว่างเวลาเริ่มต้นหรือสิ้นสุด ให้ใช้ค่าครอบคลุมทั้งวัน 00:00 - 23:59 โดยอัตโนมัติ
+  if (!s) {
+    s = "00:00";
+    if (startInput) startInput.value = s;
+  }
+  if (!e) {
+    e = "23:59";
+    if (endInput) endInput.value = e;
+  }
+  syncTimeSelects();
 
   const startDateObj = new Date(`${d}T${s}:00+07:00`);
   if (isNaN(startDateObj.getTime())) { warn("รูปแบบวันที่หรือเวลาเริ่มต้นไม่ถูกต้อง"); return; }

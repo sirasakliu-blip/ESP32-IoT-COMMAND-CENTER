@@ -200,8 +200,8 @@
           </div>
           <div class="header-badges">
             <div class="chart-legend-guide">
-              <span class="guide-item guide-temp"><span class="line-sample solid-line"></span> 🌡️ อุณหภูมิ (°C)</span>
-              <span class="guide-item guide-hum"><span class="line-sample dashed-line"></span> 💧 ความชื้น (%)</span>
+              <span class="guide-item guide-temp"><span class="line-sample line-temp"></span> 🌡️ อุณหภูมิ (°C)</span>
+              <span class="guide-item guide-hum"><span class="line-sample line-hum"></span> 💧 ความชื้น (%)</span>
             </div>
             <span class="badge live-badge"><span class="live-dot"></span> LIVE AUTO-SYNC</span>
           </div>
@@ -237,14 +237,14 @@
           </div>
           <div class="input-group">
             <label for="start"><span class="input-icon">⏰</span> ตั้งแต่</label>
-            <input type="hidden" id="start" value="">
+            <input type="hidden" id="start" value="00:00">
             <div class="time-select" data-for="start">
               <select class="ts-h" aria-label="ชั่วโมงเริ่มต้น"><option value="">--</option></select><span class="ts-colon">:</span><select class="ts-m" aria-label="นาทีเริ่มต้น"><option value="">--</option></select><span class="ts-unit">น.</span>
             </div>
           </div>
           <div class="input-group">
             <label for="end"><span class="input-icon">⌛</span> ถึง <span id="overnightTag" class="overnight-tag" style="display: none;">🌙 ข้ามวัน</span></label>
-            <input type="hidden" id="end" value="">
+            <input type="hidden" id="end" value="23:59">
             <div class="time-select" data-for="end">
               <select class="ts-h" aria-label="ชั่วโมงสิ้นสุด"><option value="">--</option></select><span class="ts-colon">:</span><select class="ts-m" aria-label="นาทีสิ้นสุด"><option value="">--</option></select><span class="ts-unit">น.</span>
             </div>

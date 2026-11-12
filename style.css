@@ -1073,12 +1073,14 @@ h1 {
   vertical-align: middle;
 }
 
-.solid-line {
+.solid-line,
+.line-temp {
   border-top: 3px solid #ff5e36;
 }
 
-.dashed-line {
-  border-top: 3px dashed #0ea5e9;
+.dashed-line,
+.line-hum {
+  border-top: 3px solid #0ea5e9;
 }
 
 .badge {
