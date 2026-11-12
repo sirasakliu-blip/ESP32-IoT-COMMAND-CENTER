@@ -176,9 +176,11 @@ let liveChart = null;
 let rangeChart = null;
 let sheetPollTimer = null;
 
-// กำหนดวันที่เริ่มต้นในช่องค้นหาเป็นวันปัจจุบัน (เวลาไทย)
+// กำหนดวันที่เริ่มต้นในช่องค้นหาเป็นวันปัจจุบัน (เวลาไทย) และเปิดให้เลือกดูได้อิสระทุกวันทุกเดือนทุกปี
 if (dateInput) {
   dateInput.value = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Bangkok" });
+  dateInput.removeAttribute("min");
+  dateInput.removeAttribute("max");
 }
 
 // นาฬิกาดิจิทัลเรียลไทม์ (เวลาไทย)
@@ -314,7 +316,7 @@ function makeChart(id) {
       labels: [],
       datasets: [
         {
-          label: "อุณหภูมิ (°C)",
+          label: "🌡️ อุณหภูมิ (°C) [เส้นทึบ]",
           data: [],
           borderColor: "#ff5e36",
           backgroundColor: tempGrad,
@@ -322,17 +324,18 @@ function makeChart(id) {
           tension: 0.3,
           cubicInterpolationMode: "monotone", // เส้นโค้งไม่พุ่งเกินค่าจริง
           spanGaps: false,                     // ช่วงที่ไม่มีข้อมูลจะเว้นว่าง ไม่ลากเส้นหลอก
+          borderDash: [],                      // เส้นทึบสำหรับอุณหภูมิ
           pointRadius: 0,
           pointHitRadius: 10,
-          pointHoverRadius: 6,
+          pointHoverRadius: 7,
           pointHoverBackgroundColor: "#ff5e36",
           pointHoverBorderColor: "#ffffff",
-          pointHoverBorderWidth: 2,
-          borderWidth: 2.5,
+          pointHoverBorderWidth: 2.5,
+          borderWidth: 3,
           fill: true
         },
         {
-          label: "ความชื้น (%)",
+          label: "💧 ความชื้น (%) [เส้นประ]",
           data: [],
           borderColor: "#0ea5e9",
           backgroundColor: humGrad,
@@ -340,13 +343,14 @@ function makeChart(id) {
           tension: 0.3,
           cubicInterpolationMode: "monotone", // เส้นโค้งไม่พุ่งเกินค่าจริง
           spanGaps: false,                     // ช่วงที่ไม่มีข้อมูลจะเว้นว่าง ไม่ลากเส้นหลอก
+          borderDash: [6, 4],                  // เส้นประชัดเจนสำหรับความชื้น แยกออกได้ทันที
           pointRadius: 0,
           pointHitRadius: 10,
-          pointHoverRadius: 6,
+          pointHoverRadius: 7,
           pointHoverBackgroundColor: "#0ea5e9",
           pointHoverBorderColor: "#ffffff",
-          pointHoverBorderWidth: 2,
-          borderWidth: 2.5,
+          pointHoverBorderWidth: 2.5,
+          borderWidth: 2.8,
           fill: true
         }
       ]
@@ -370,13 +374,34 @@ function makeChart(id) {
         legend: {
           position: "top",
           align: "end",
+          onHover: (event, legendItem, legend) => {
+            const ci = legend.chart;
+            ci.data.datasets.forEach((d, idx) => {
+              if (idx === legendItem.datasetIndex) {
+                d.borderWidth = 3.8;
+                d.borderColor = idx === 0 ? "#ff5e36" : "#0ea5e9";
+              } else {
+                d.borderWidth = 1.2;
+                d.borderColor = idx === 0 ? "rgba(255, 94, 54, 0.22)" : "rgba(14, 165, 233, 0.22)";
+              }
+            });
+            ci.update('none');
+          },
+          onLeave: (event, legendItem, legend) => {
+            const ci = legend.chart;
+            ci.data.datasets[0].borderWidth = 3;
+            ci.data.datasets[0].borderColor = "#ff5e36";
+            ci.data.datasets[1].borderWidth = 2.8;
+            ci.data.datasets[1].borderColor = "#0ea5e9";
+            ci.update('none');
+          },
           labels: {
-            boxWidth: 12,
+            boxWidth: 14,
             boxHeight: 12,
             usePointStyle: true,
-            pointStyle: "circle",
+            pointStyle: "rectRounded",
             color: theme.tickColor,
-            font: { family: "'Plus Jakarta Sans', 'Prompt', sans-serif", size: 12, weight: '600' }
+            font: { family: "'Plus Jakarta Sans', 'Prompt', sans-serif", size: 12.5, weight: '700' }
           }
         },
         tooltip: {
@@ -395,8 +420,8 @@ function makeChart(id) {
             // หัว tooltip: วันที่ + เวลา (เช่น 12 พ.ย. 2026 · 00:24:10 น.)
             title: (items) => items.length ? `📅 ${fmtThDate(items[0].parsed.x)} · ⏰ ${fmtThTime(items[0].parsed.x, true)} น.` : "",
             label: (item) => item.datasetIndex === 0
-              ? ` 🌡️ อุณหภูมิ: ${item.parsed.y.toFixed(1)} °C`
-              : ` 💧 ความชื้น: ${item.parsed.y.toFixed(1)} %`
+              ? ` 🌡️ อุณหภูมิ: ${item.parsed.y.toFixed(1)} °C (เส้นทึบสีส้ม)`
+              : ` 💧 ความชื้น: ${item.parsed.y.toFixed(1)} % (เส้นประสีฟ้า)`
           }
         }
       },
@@ -426,17 +451,19 @@ function makeChart(id) {
         },
         yT: {
           position: "left",
-          title: { display: true, text: "อุณหภูมิ (°C)", color: "#ff5e36", font: { weight: 'bold', size: 12 } },
+          title: { display: true, text: "🌡️ อุณหภูมิ (°C)", color: "#ff5e36", font: { weight: 'bold', size: 12 } },
           grid: { color: theme.gridColor },
-          ticks: { color: theme.tickColor, font: { size: 11 } },
+          border: { color: "#ff5e36", width: 2 },
+          ticks: { color: "#ff5e36", font: { size: 11.5, weight: '700' } },
           suggestedMin: 20,
           suggestedMax: 40
         },
         yH: {
           position: "right",
-          title: { display: true, text: "ความชื้น (%)", color: "#0ea5e9", font: { weight: 'bold', size: 12 } },
+          title: { display: true, text: "💧 ความชื้น (%)", color: "#0ea5e9", font: { weight: 'bold', size: 12 } },
           grid: { drawOnChartArea: false },
-          ticks: { color: theme.tickColor, font: { size: 11 } },
+          border: { color: "#0ea5e9", width: 2 },
+          ticks: { color: "#0ea5e9", font: { size: 11.5, weight: '700' } },
           suggestedMin: 30,
           suggestedMax: 90
         }
@@ -593,12 +620,18 @@ function updateChartsTheme() {
       if (!chart.options.scales.yT.grid) chart.options.scales.yT.grid = {};
       chart.options.scales.yT.grid.color = theme.gridColor;
       if (!chart.options.scales.yT.ticks) chart.options.scales.yT.ticks = {};
-      chart.options.scales.yT.ticks.color = theme.tickColor;
+      chart.options.scales.yT.ticks.color = "#ff5e36";
+      if (!chart.options.scales.yT.border) chart.options.scales.yT.border = {};
+      chart.options.scales.yT.border.color = "#ff5e36";
+      if (chart.options.scales.yT.title) chart.options.scales.yT.title.color = "#ff5e36";
     }
 
     if (chart.options.scales.yH) {
       if (!chart.options.scales.yH.ticks) chart.options.scales.yH.ticks = {};
-      chart.options.scales.yH.ticks.color = theme.tickColor;
+      chart.options.scales.yH.ticks.color = "#0ea5e9";
+      if (!chart.options.scales.yH.border) chart.options.scales.yH.border = {};
+      chart.options.scales.yH.border.color = "#0ea5e9";
+      if (chart.options.scales.yH.title) chart.options.scales.yH.title.color = "#0ea5e9";
     }
 
     if (chart.options.plugins && chart.options.plugins.legend && chart.options.plugins.legend.labels) {
@@ -1104,14 +1137,17 @@ if (quickTodayBtn) {
   });
 }
 
-// แสดงช่วงข้อมูลที่มีอยู่จริง และจำกัดปฏิทินให้เลือกได้เฉพาะวันที่มีข้อมูล
+// แสดงช่วงข้อมูลที่มีอยู่จริง (เปิดให้ปฏิทินเลือกดูได้อิสระทุกวัน ทุกเดือน ทุกปี)
 function updateDataRangeHint(rows) {
   const hint = document.getElementById("dataRangeHint");
   const valid = rows.filter((r) => r.ts > 0);
   if (!valid.length) { if (hint) hint.textContent = ""; return; }
   const a = valid[0].ts * 1000, b = valid[valid.length - 1].ts * 1000;
-  const toISO = (ms) => new Date(ms + 7 * 3600 * 1000).toISOString().slice(0, 10);
-  if (dateInput) { dateInput.min = toISO(a); dateInput.max = toISO(b); }
+  // ปลดล็อกขีดจำกัด min/max ของช่องปฏิทิน เพื่อให้เลือกดูได้อิสระทุกวัน ทุกเดือน ทุกปี
+  if (dateInput) {
+    dateInput.removeAttribute("min");
+    dateInput.removeAttribute("max");
+  }
   if (hint) {
     hint.innerHTML = `📦 มีข้อมูลตั้งแต่ <strong>${fmtThDate(a)} ${fmtThTime(a)} น.</strong> ถึง <strong>${fmtThDate(b)} ${fmtThTime(b)} น.</strong> (${valid.length} จุด)` +
       (activeSearch ? ` · <a href="#" id="clearSearchLink">แสดงข้อมูลทั้งหมด</a>` : "");
