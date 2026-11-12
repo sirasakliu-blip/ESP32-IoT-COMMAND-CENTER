@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="th" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>ค้นหาข้อมูลตามช่วงเวลา - ESP32 IoT Station Dashboard</title>
+  
+  <!-- ไอคอนบนแท็บเบราว์เซอร์ (Favicon) & ไอคอนแอปสำหรับ คอม โทรศัพท์ แท็บเล็ต ไอแพด -->
+  <link rel="icon" type="image/svg+xml" href="logo.svg?v=1">
+  <link rel="apple-touch-icon" href="logo.svg?v=1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ESP32 IoT">
+  
+  <!-- ป้องกัน Flash of unstyled theme ตอนโหลดหน้าเว็บ -->
+  <script>
+    (function() {
+      try {
+        const saved = localStorage.getItem("esp32_dashboard_theme");
+        if (saved === "light" || saved === "dark") {
+          document.documentElement.setAttribute("data-theme", saved);
+        } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      } catch (e) {}
+    })();
+  </script>
+
+  <!-- Google Fonts: Plus Jakarta Sans & Prompt -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=12">
+  
+  <!-- Chart.js 4.4.1 -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <!-- แสงไฟตกแต่งพื้นหลังแนว Ambient Cosmic Glow -->
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+  <div class="ambient-glow glow-3"></div>
+
+  <div class="container">
+    <!-- แถบแจ้งเตือนเมื่อยังไม่ได้ตั้งค่าแหล่งข้อมูล -->
+    <div id="configNotice" class="config-banner" style="display: none;">
+      <div class="banner-content">
+        <span class="banner-icon">⚡</span>
+        <div>
+          <strong>ยังไม่ได้เลือกแหล่งข้อมูล:</strong> ใส่ <code>Google Sheet URL</code> หรือ <code>Firebase Config</code> เพื่อเริ่มดึงข้อมูลมาแสดงผล
+        </div>
+      </div>
+      <div class="banner-actions">
+        <button id="openConfigBtn" class="btn-sm btn-outline">⚙️ ตั้งค่าแหล่งข้อมูล</button>
+        <button id="loadDemoBtn" class="btn-sm btn-primary">✨ โหลดข้อมูลจำลอง (Demo)</button>
+      </div>
+    </div>
+
+    <!-- ส่วนหัว Top Navbar & Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="brand-row">
+          <div class="brand-badge">
+            <span class="badge-dot"></span>
+            ESP32 IoT COMMAND CENTER
+          </div>
+        </div>
+        <div class="header-main-brand">
+          <div class="brand-logo">
+            <img src="logo.svg?v=1" alt="ESP32 IoT Logo" class="brand-logo-img" width="52" height="52">
+          </div>
+          <div class="brand-text">
+            <h1>ค้นหาข้อมูลตามช่วงเวลา</h1>
+            <p class="subtitle">สืบค้นประวัติย้อนหลัง พร้อมวิเคราะห์ค่าสถิติ ต่ำสุด-สูงสุด-เฉลี่ย</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <!-- สถานะการเชื่อมต่อ -->
+        <span id="status" class="status">● กำลังเชื่อมต่อ...</span>
+
+        <!-- ปุ่มควบคุม Theme และการตั้งค่า -->
+        <div class="control-actions">
+          <button id="themeToggleBtn" class="action-btn theme-toggle" title="สลับโหมด มืด / สว่าง" aria-label="Toggle Theme">
+            <span class="theme-icon">🌙</span>
+          </button>
+          <button id="configToggleBtn" class="action-btn" title="ตั้งค่าแหล่งข้อมูล (Firebase / Google Sheets)" aria-label="Settings">
+            ⚙️
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- ข้อมูลเวลาอัปเดตล่าสุด (คง id="updated" และ class="updated" ตามคู่มือ) -->
+    <div class="update-bar">
+      <div class="update-indicator">
+        <span class="radar-dot"></span>
+        <p class="updated">อัปเดตล่าสุด: <span id="updated">-</span></p>
+      </div>
+      <div class="device-meta">
+        <span class="meta-tag">📶 WiFi 2.4 GHz</span>
+        <span class="meta-tag">⚡ Live ทุก 1 วินาที • บันทึกทุก 5 นาที</span>
+      </div>
+    </div>
+
+    <!-- เมนูนำทางสลับหน้า (Tabs Navigation สไตล์เดียวกับภาพที่ 2) -->
+    <nav class="app-nav">
+      <a href="index.html" class="nav-pill" data-view="live">
+        <span class="nav-icon">📊</span>
+        <span>แดชบอร์ดภาพรวม</span>
+      </a>
+      <a href="history.html" class="nav-pill active" data-view="analytics">
+        <span class="nav-icon">📈</span>
+        <span>กราฟแนวโน้ม (Analytics)</span>
+      </a>
+    </nav>
+
+    <!-- มุมมอง 1: แดชบอร์ดภาพรวม (Live Overview) -->
+    <main id="viewLive" class="view-panel" style="display: none;">
+      <!-- ส่วนการ์ดแสดงตัวเลขอุณหภูมิและความชื้นแบบ Real-time -->
+      <section class="cards">
+        <!-- การ์ดอุณหภูมิ -->
+        <div class="card card-temp">
+          <div class="card-glow"></div>
+          <div class="card-border-glow"></div>
+          <div class="card-top">
+            <div class="metric-label">
+              <span class="card-chip chip-temp">TEMPERATURE</span>
+              <p>อุณหภูมิ</p>
+            </div>
+            <div class="icon-bubble icon-temp">
+              <span>🌡️</span>
+            </div>
+          </div>
+          <div class="card-main">
+            <h2><span id="temp">--</span><span class="unit">°C</span></h2>
+          </div>
+          <div class="card-footer">
+            <span class="status-pill" id="tempTag">รอสัญญาณข้อมูล</span>
+            <span class="sensor-info" id="liveTempMinMax">DHT11 (ขา D22)</span>
+          </div>
+        </div>
+
+        <!-- การ์ดความชื้น -->
+        <div class="card card-hum">
+          <div class="card-glow"></div>
+          <div class="card-border-glow"></div>
+          <div class="card-top">
+            <div class="metric-label">
+              <span class="card-chip chip-hum">HUMIDITY</span>
+              <p>ความชื้นสัมพัทธ์</p>
+            </div>
+            <div class="icon-bubble icon-hum">
+              <span>💧</span>
+            </div>
+          </div>
+          <div class="card-main">
+            <h2><span id="hum">--</span><span class="unit">%</span></h2>
+          </div>
+          <div class="card-footer">
+            <span class="status-pill" id="humTag">รอสัญญาณข้อมูล</span>
+            <span class="sensor-info" id="liveHumMinMax">ช่วงวัด 20% - 90%</span>
+          </div>
+        </div>
+
+        <!-- การ์ดรู้สึกจริง (Heat Index) ตามภาพตัวอย่าง -->
+        <div class="card card-heat">
+          <div class="card-glow"></div>
+          <div class="card-border-glow"></div>
+          <div class="card-top">
+            <div class="metric-label">
+              <span class="card-chip chip-heat">HEAT INDEX</span>
+              <p>รู้สึกจริง (Heat Index)</p>
+            </div>
+            <div class="icon-bubble icon-heat">
+              <span>☀️</span>
+            </div>
+          </div>
+          <div class="card-main">
+            <h2><span id="heatIndex">--</span><span class="unit unit-heat">°C</span></h2>
+            <span class="card-sub-hint">อิงผลกระทบจากความชื้น</span>
+          </div>
+          <div class="card-footer card-footer-heat">
+            <span class="heat-footer-label">การสัมผัส:</span>
+            <span class="heat-footer-val" id="heatTouchVal">ตามร่างกาย</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- กราฟ Real-time ย้อนหลัง 24 ชั่วโมง (คง id="liveChart" และ class="box" ตามคู่มือ) -->
+      <section class="box box-chart">
+        <div class="box-header">
+          <div class="title-with-icon">
+            <div class="section-icon">📈</div>
+            <div>
+              <h3>กราฟ 24 ชั่วโมงล่าสุด</h3>
+              <span class="section-sub">บันทึกลง Google Sheet ทุก 5 นาที (สูงสุด 288 จุด)</span>
+            </div>
+          </div>
+          <div class="header-badges">
+            <span class="badge live-badge"><span class="live-dot"></span> LIVE AUTO-SYNC</span>
+          </div>
+        </div>
+        <div class="chart-wrapper">
+          <canvas id="liveChart"></canvas>
+        </div>
+      </section>
+    </main>
+
+    <!-- มุมมอง 2: กราฟแนวโน้ม (Analytics & History) -->
+    <main id="viewAnalytics" class="view-panel active">
+      <!-- ส่วนค้นหาข้อมูลย้อนหลังตามช่วงเวลา -->
+      <section class="box box-search">
+        <div class="box-header">
+          <div class="title-with-icon">
+            <div class="section-icon">🔎</div>
+            <div>
+              <h3>ตัวกรองช่วงเวลา</h3>
+              <span class="section-sub">เลือกวันที่และเวลาที่ต้องการสืบค้น (รองรับการค้นหาข้ามเที่ยงคืน)</span>
+            </div>
+          </div>
+          <div class="header-controls">
+            <button id="quickTodayBtn" class="btn-sm btn-ghost" title="ตั้งค่าค้นหาวันนี้">📅 วันนี้</button>
+          </div>
+        </div>
+
+        <!-- กล่องฟอร์มค้นหา -->
+        <div class="search search-panel">
+          <div class="input-group">
+            <label for="date"><span class="input-icon">📅</span> วันที่</label>
+            <input type="date" id="date">
+          </div>
+          <div class="input-group">
+            <label for="start"><span class="input-icon">⏰</span> ตั้งแต่</label>
+            <input type="hidden" id="start" value="">
+            <div class="time-select" data-for="start">
+              <select class="ts-h" aria-label="ชั่วโมงเริ่มต้น"><option value="">--</option></select><span class="ts-colon">:</span><select class="ts-m" aria-label="นาทีเริ่มต้น"><option value="">--</option></select><span class="ts-unit">น.</span>
+            </div>
+          </div>
+          <div class="input-group">
+            <label for="end"><span class="input-icon">⌛</span> ถึง <span id="overnightTag" class="overnight-tag" style="display: none;">🌙 ข้ามวัน</span></label>
+            <input type="hidden" id="end" value="">
+            <div class="time-select" data-for="end">
+              <select class="ts-h" aria-label="ชั่วโมงสิ้นสุด"><option value="">--</option></select><span class="ts-colon">:</span><select class="ts-m" aria-label="นาทีสิ้นสุด"><option value="">--</option></select><span class="ts-unit">น.</span>
+            </div>
+          </div>
+          <div class="search-actions">
+            <button id="searchBtn" class="btn-primary">
+              <span>ค้นหาข้อมูล</span>
+              <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- ปุ่มดาวน์โหลดผลการค้นหา -->
+        <div class="export-bar">
+          <button id="exportCsvBtn" class="btn-outline" style="display: none;" title="ตารางข้อมูล เปิดด้วย Excel ได้">
+              📥 ตาราง (CSV)
+          </button>
+          <button id="exportPngBtn" class="btn-outline" style="display: none;" title="รูปกราฟของช่วงที่เลือก">
+              🖼️ กราฟ (PNG)
+          </button>
+          <button id="exportReportBtn" class="btn-outline" style="display: none;" title="กราฟ + สรุป + ตาราง ในไฟล์เดียว">
+              📄 รายงาน (PDF)
+          </button>
+        </div>
+
+        <!-- ช่วงข้อมูลที่มีอยู่จริง (อัปเดตอัตโนมัติ) -->
+        <p id="dataRangeHint" class="range-hint"></p>
+
+        <!-- สรุปผลสถิติ KPI Cards และ Summary Text -->
+        <div id="summaryWrap" class="summary-wrapper" style="display: none;">
+          <div class="kpi-grid">
+            <div class="kpi-card kpi-temp">
+              <span class="kpi-label">อุณหภูมิเฉลี่ย</span>
+              <span class="kpi-val" id="kpiAvgTemp">-- °C</span>
+              <span class="kpi-sub" id="kpiRangeTemp">ต่ำสุด -- | สูงสุด --</span>
+            </div>
+            <div class="kpi-card kpi-hum">
+              <span class="kpi-label">ความชื้นเฉลี่ย</span>
+              <span class="kpi-val" id="kpiAvgHum">-- %</span>
+              <span class="kpi-sub" id="kpiRangeHum">ต่ำสุด -- | สูงสุด --</span>
+            </div>
+            <div class="kpi-card kpi-count">
+              <span class="kpi-label">จำนวนข้อมูลที่พบ</span>
+              <span class="kpi-val" id="kpiCount">-- ชุด</span>
+              <span class="kpi-sub" id="kpiTimeSpan">ช่วงเวลาที่สืบค้น</span>
+            </div>
+          </div>
+          <p id="summary" class="summary-text"></p>
+        </div>
+
+        <!-- กราฟผลการค้นหา -->
+        <div id="chartSection" class="chart-wrapper chart-range-wrapper">
+          <canvas id="rangeChart"></canvas>
+        </div>
+
+        <!-- ตารางแสดงข้อมูล -->
+        <div id="tableSection" class="table-container">
+          <table id="dataTable">
+            <thead>
+              <tr>
+                <th>ลำดับ</th>
+                <th>วันที่</th>
+                <th>เวลา</th>
+                <th>อุณหภูมิ (°C)</th>
+                <th>ความชื้น (%)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td colspan="5" class="empty-state">
+                  <div class="empty-content">
+                    <span class="empty-icon">📊</span>
+                    <p>กดปุ่ม <strong>"ค้นหาข้อมูล"</strong> เพื่อแสดงผลข้อมูลลงในกราฟและตาราง</p>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <div class="footer-content">
+        <p>© 2026 ESP32 IoT Weather Station Dashboard • รองรับ Firebase Realtime Database & Google Sheets Sync</p>
+        <div class="footer-links">
+          <span>รองรับ Vercel Deploy</span>
+          <span>•</span>
+          <span>Google Sheets Cloud Database</span>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Modal สำหรับตั้งค่าแหล่งข้อมูล (Google Sheets & Firebase) -->
+  <div id="configModal" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <span class="modal-badge">DATA SOURCE</span>
+          <h3>ตั้งค่าแหล่งข้อมูล (Data Source)</h3>
+        </div>
+        <button id="closeModalBtn" class="modal-close" aria-label="Close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- แถบเลือกประเภทแท็บ -->
+        <div class="modal-tabs">
+          <button id="tabSheetBtn" class="tab-btn active">📊 Google Sheet</button>
+          <button id="tabFirebaseBtn" class="tab-btn">🔥 Firebase RTDB</button>
+        </div>
+
+        <!-- หน้าฟอร์ม Google Sheet -->
+        <div id="tabSheetPanel" class="tab-panel active">
+          <p class="modal-desc">
+            วางลิงก์ <strong>Google Sheet</strong> หรือ Web App URL ที่คุณแชร์ไว้ (ตั้งค่าแชร์เป็น: <em>ทุกคนที่มีลิงก์มีสิทธิ์ดู</em>):
+          </p>
+          <input type="text" id="sheetUrlInput" class="modal-input" placeholder="https://docs.google.com/spreadsheets/d/1.../edit หรือ Web App URL">
+          <p class="input-hint">💡 ระบบจะดึงข้อมูลจากแท็บ <code>data</code> บน Google Sheet มาแสดงผลบนกราฟและการ์ดโดยตรง</p>
+        </div>
+
+        <!-- หน้าฟอร์ม Firebase -->
+        <div id="tabFirebasePanel" class="tab-panel">
+          <p class="modal-desc">
+            คัดลอกค่า <code>const firebaseConfig = { ... };</code> จาก <strong>Firebase Console</strong> มาวางด้านล่างนี้:
+          </p>
+          <textarea id="configInput" spellcheck="false" placeholder='const firebaseConfig = {
+  apiKey: "AIzaSy...",
+  databaseURL: "https://your-project-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "your-project"
+};'></textarea>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="clearConfigBtn" class="btn-sm btn-ghost">ล้างค่าที่บันทึก</button>
+        <button id="saveConfigBtn" class="btn-sm btn-primary">💾 บันทึกและดึงข้อมูล</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="app.js?v=12"></script>
+</body>
+</html>

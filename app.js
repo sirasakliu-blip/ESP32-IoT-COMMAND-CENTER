@@ -40,6 +40,8 @@ const themeToggleBtn = document.getElementById("themeToggleBtn");
 const statusEl = document.getElementById("status");
 const tempEl = document.getElementById("temp");
 const humEl = document.getElementById("hum");
+const heatIndexEl = document.getElementById("heatIndex");
+const heatTouchVal = document.getElementById("heatTouchVal");
 const updatedEl = document.getElementById("updated");
 const tempTag = document.getElementById("tempTag");
 const humTag = document.getElementById("humTag");
@@ -53,21 +55,66 @@ const dateInput = document.getElementById("date");
 const startInput = document.getElementById("start");
 const endInput = document.getElementById("end");
 
+// ตรวจสอบและแสดงป้ายแจ้งเตือนการเลือกเวลาข้ามวัน/ข้ามคืน (เช่น 20:00 ไป 00:00 หรือ 22:00 ไป 02:00)
+function updateOvernightIndicator() {
+  const tag = document.getElementById("overnightTag");
+  if (!tag || !startInput || !endInput) return;
+  const s = startInput.value || "";
+  const e = endInput.value || "";
+  const d = dateInput ? dateInput.value : "";
+  if (s && e && e <= s) {
+    if (d) {
+      const nextDate = new Date(new Date(`${d}T12:00:00+07:00`).getTime() + 86400000);
+      const thShort = nextDate.toLocaleDateString("th-TH", { day: "numeric", month: "short" });
+      tag.textContent = `🌙 ข้ามวัน (+1 วัน: ${thShort})`;
+    } else {
+      tag.textContent = `🌙 ข้ามวัน (+1 วัน)`;
+    }
+    tag.style.display = "inline-flex";
+  } else {
+    tag.style.display = "none";
+  }
+}
+
 // ===== ตัวเลือกเวลาแบบเลื่อน (ชั่วโมง : นาที) ใช้ได้เหมือนกันทั้งคอม มือถือ iPad =====
-// ค่าจริงเก็บใน <input type="hidden" id="start"/"end"> รูปแบบ HH:MM เหมือนเดิม
+// ค่าจริงเก็บใน <input type="hidden" id="start"/"end"> รูปแบบ HH:MM หรือว่าง "" (แสดง --)
 function buildTimeSelect(hidden) {
   if (!hidden) return;
   const box = document.querySelector(`.time-select[data-for="${hidden.id}"]`);
   if (!box) return;
   const hSel = box.querySelector(".ts-h"), mSel = box.querySelector(".ts-m");
   const pad = (n) => String(n).padStart(2, "0");
+
+  hSel.innerHTML = "";
+  mSel.innerHTML = "";
+  hSel.add(new Option("--", ""));
   for (let i = 0; i < 24; i++) hSel.add(new Option(pad(i), pad(i)));
+
+  mSel.add(new Option("--", ""));
   for (let i = 0; i < 60; i++) mSel.add(new Option(pad(i), pad(i)));
+
   const toSelect = () => {
-    const [h, m] = (hidden.value || "00:00").split(":");
-    hSel.value = pad(Number(h) || 0); mSel.value = pad(Number(m) || 0);
+    if (!hidden.value) {
+      hSel.value = "";
+      mSel.value = "";
+      return;
+    }
+    const [h, m] = hidden.value.split(":");
+    hSel.value = (h !== undefined && h !== "") ? pad(Number(h) || 0) : "";
+    mSel.value = (m !== undefined && m !== "") ? pad(Number(m) || 0) : "";
   };
-  const toHidden = () => { hidden.value = `${hSel.value}:${mSel.value}`; };
+
+  const toHidden = () => {
+    if (hSel.value === "" && mSel.value === "") {
+      hidden.value = "";
+    } else {
+      const h = hSel.value !== "" ? hSel.value : "00";
+      const m = mSel.value !== "" ? mSel.value : "00";
+      hidden.value = `${h}:${m}`;
+    }
+    updateOvernightIndicator();
+  };
+
   hSel.addEventListener("change", toHidden);
   mSel.addEventListener("change", toHidden);
   hidden.syncTimeSelect = toSelect;
@@ -75,9 +122,14 @@ function buildTimeSelect(hidden) {
 }
 function syncTimeSelects() {
   [startInput, endInput].forEach((el) => el && el.syncTimeSelect && el.syncTimeSelect());
+  updateOvernightIndicator();
 }
 buildTimeSelect(startInput);
 buildTimeSelect(endInput);
+if (dateInput) {
+  dateInput.addEventListener("change", updateOvernightIndicator);
+}
+updateOvernightIndicator();
 const searchBtn = document.getElementById("searchBtn");
 const exportCsvBtn = document.getElementById("exportCsvBtn");
 const summaryEl = document.getElementById("summary");
@@ -414,9 +466,15 @@ function updateChart(chart, rows, opts = {}) {
   chart.data.datasets[0].data = tPts;
   chart.data.datasets[1].data = hPts;
 
-  // จุดข้อมูล: แสดงเม็ดกลมเมื่อจำนวนไม่มาก จะได้เห็นว่าค่าแต่ละจุดอยู่ตรงไหน
-  const r = valid.length <= 60 ? 3 : 0;
-  chart.data.datasets.forEach((ds) => { ds.pointRadius = r; ds.pointBackgroundColor = ds.borderColor; });
+  // จุดข้อมูล: ซ่อนจุดโดยค่าเริ่มต้น (pointRadius = 0) แสดงเฉพาะเมื่อเลื่อนเมาส์ชี้/แตะสัมผัส (Hover)
+  chart.data.datasets.forEach((ds) => {
+    ds.pointRadius = 0;
+    ds.pointHitRadius = 14;
+    ds.pointHoverRadius = 6;
+    ds.pointHoverBorderWidth = 2;
+    ds.pointHoverBorderColor = "#ffffff";
+    ds.pointHoverBackgroundColor = ds.borderColor;
+  });
 
   // ปรับช่วงแกนตามข้อมูลจริง (ไม่บีบเส้นให้แบนจนอ่านไม่ออก)
   const sc = chart.options.scales;
@@ -777,18 +835,48 @@ async function fetchFromGoogleSheet(inputUrl, isBackground = false) {
       setupExportCsv(rows);
     }
 
+    // บันทึกแคชข้อมูลล่าสุดไว้เพื่อกู้คืนอัตโนมัติหากมีปัญหาเครือข่าย
+    try {
+      sessionStorage.setItem("esp32_cached_sheet_rows", JSON.stringify(rows));
+    } catch (e) {}
+
     if (configNotice) configNotice.style.display = "none";
     return true;
   } catch (err) {
     console.error("Google Sheet Fetch Error:", err);
-    if (!isBackground) {
-      if (statusEl) {
-        statusEl.textContent = "● เกิดข้อผิดพลาดในการดึงข้อมูลจากชีต";
-        statusEl.className = "status offline";
-      }
-      alert("ไม่สามารถดึงข้อมูลจาก Google Sheet ได้: " + err.message + 
-            "\n\nคำแนะนำ: กรุณาเปิด Google Sheet กด 'แชร์' (Share) แล้วเปลี่ยนสิทธิ์ทั่วไปเป็น 'ทุกคนที่มีลิงก์มีสิทธิ์ดู' (Anyone with the link can view)");
+    if (statusEl) {
+      statusEl.textContent = "● กำลังลองเชื่อมต่อใหม่...";
+      statusEl.className = "status offline";
     }
+    // กู้คืนข้อมูลจากแคชล่าสุดทันที เพื่อให้หน้าจอไม่ว่างเปล่าและไม่ต้องรบกวนผู้ใช้ด้วย alert
+    try {
+      const cached = sessionStorage.getItem("esp32_cached_sheet_rows");
+      if (cached) {
+        const cachedRows = JSON.parse(cached);
+        if (Array.isArray(cachedRows) && cachedRows.length > 0) {
+          const last = cachedRows[cachedRows.length - 1];
+          if (tempEl) tempEl.textContent = last.temp.toFixed(1);
+          if (humEl) humEl.textContent = last.hum.toFixed(1);
+          if (updatedEl) updatedEl.textContent = `${last.date} ${last.time}`;
+          updateMetricPills(last.temp, last.hum);
+          updateMinMaxSub(cachedRows);
+          updateDataRangeHint(cachedRows);
+          const lastTsAll = cachedRows[cachedRows.length - 1].ts;
+          const last24 = cachedRows.filter((r) => r.ts >= lastTsAll - 24 * 3600);
+          updateChart(liveChart, last24, { title: rangeTitle(last24, "24 ชม. ล่าสุด: ") });
+          updateChart(rangeChart, cachedRows, { title: rangeTitle(cachedRows, "ข้อมูลทั้งหมด: ") });
+          renderTable(cachedRows);
+          renderSummary(cachedRows);
+          setupExportCsv(cachedRows);
+        }
+      }
+    } catch (e) {}
+    // ลองเชื่อมต่อใหม่อัตโนมัติในเบื้องหลัง
+    setTimeout(() => {
+      if (isSheetMode && activeSource && activeSource.url) {
+        fetchFromGoogleSheet(activeSource.url, true);
+      }
+    }, 4000);
     return false;
   }
 }
@@ -899,6 +987,25 @@ function initFirebaseApp(config) {
   }
 }
 
+// ฟังก์ชันคำนวณดัชนีความร้อน (Heat Index) ตามสูตร Steadman / NOAA
+function calculateHeatIndex(T, RH) {
+  if (typeof T !== "number" || typeof RH !== "number" || isNaN(T) || isNaN(RH)) return T;
+  const Tf = T * 1.8 + 32;
+  let hif = 0.5 * (Tf + 61.0 + ((Tf - 68.0) * 1.2) + (RH * 0.094));
+  if (hif >= 80) {
+    hif = -42.379 + 2.04901523 * Tf + 10.14333127 * RH
+          - 0.22475541 * Tf * RH - 0.00683783 * Tf * Tf
+          - 0.05481717 * RH * RH + 0.00122874 * Tf * Tf * RH
+          + 0.00085282 * Tf * RH * RH - 0.00000199 * Tf * Tf * RH * RH;
+    if (RH < 13 && Tf >= 80 && Tf <= 112) {
+      hif -= ((13 - RH) / 4) * Math.sqrt((17 - Math.abs(Tf - 95)) / 17);
+    } else if (RH > 85 && Tf >= 80 && Tf <= 87) {
+      hif += ((RH - 85) / 10) * ((87 - Tf) / 5);
+    }
+  }
+  return (hif - 32) / 1.8;
+}
+
 // อัปเดตคำแนะนำสภาวะอากาศบนการ์ด
 function updateMetricPills(temp, hum) {
   if (tempTag) {
@@ -924,6 +1031,26 @@ function updateMetricPills(temp, hum) {
     } else {
       humTag.textContent = "🌧️ ความชื้นสูง";
       humTag.style.color = "var(--hum-primary)";
+    }
+  }
+
+  if (heatIndexEl && typeof temp === "number" && typeof hum === "number") {
+    const hi = calculateHeatIndex(temp, hum);
+    heatIndexEl.textContent = hi.toFixed(1);
+    if (heatTouchVal) {
+      if (hi < 27) {
+        heatTouchVal.textContent = "ตามร่างกาย";
+        heatTouchVal.style.color = "";
+      } else if (hi < 33) {
+        heatTouchVal.textContent = "ตามร่างกาย (ระวัง)";
+        heatTouchVal.style.color = "#f59e0b";
+      } else if (hi < 42) {
+        heatTouchVal.textContent = "ตามร่างกาย (เตือนภัย)";
+        heatTouchVal.style.color = "#ea580c";
+      } else {
+        heatTouchVal.textContent = "ตามร่างกาย (อันตราย)";
+        heatTouchVal.style.color = "var(--danger-color)";
+      }
     }
   }
 }
@@ -1012,13 +1139,29 @@ async function runSearch(silent = false) {
 
   if (!d || !s || !e) { warn("กรุณาเลือกวันที่และเวลาให้ครบถ้วน"); return; }
 
-  const startTs = Date.parse(`${d}T${s}:00+07:00`) / 1000;
-  const endTs = Date.parse(`${d}T${e}:59+07:00`) / 1000;
-  if (isNaN(startTs) || isNaN(endTs)) { warn("รูปแบบวันที่หรือเวลาไม่ถูกต้อง"); return; }
+  const startDateObj = new Date(`${d}T${s}:00+07:00`);
+  if (isNaN(startDateObj.getTime())) { warn("รูปแบบวันที่หรือเวลาเริ่มต้นไม่ถูกต้อง"); return; }
+  const startTs = Math.floor(startDateObj.getTime() / 1000);
+
+  // ตรวจสอบการเลือกเวลาข้ามวัน/ข้ามคืน
+  // เช่น เริ่ม 20:00 หรือ 22:00 ถึง 00:00 (เที่ยงคืน) หรือถึง 02:00 (ตีสองของวันรุ่งขึ้น)
+  const isOvernight = (e <= s);
+  let endDateStr = d;
+  if (isOvernight) {
+    const nextDate = new Date(startDateObj.getTime() + 24 * 60 * 60 * 1000);
+    endDateStr = nextDate.toLocaleDateString("sv-SE", { timeZone: "Asia/Bangkok" });
+  }
+
+  const endDateObj = new Date(`${endDateStr}T${e}:59+07:00`);
+  if (isNaN(endDateObj.getTime())) { warn("รูปแบบเวลาสิ้นสุดไม่ถูกต้อง"); return; }
+  const endTs = Math.floor(endDateObj.getTime() / 1000);
+
   if (endTs < startTs) { warn("เวลาสิ้นสุดต้องหลังเวลาเริ่มต้น"); return; }
 
-  activeSearch = { d, s, e };
-  const label = `${fmtThDate(startTs * 1000)} · ${s} – ${e} น.`;
+  activeSearch = { d, s, e, isOvernight, endD: endDateStr };
+  const label = isOvernight
+    ? `${fmtThDate(startTs * 1000)} ${s} น. – ${fmtThDate(endTs * 1000)} ${e} น. (ข้ามวัน)`
+    : `${fmtThDate(startTs * 1000)} · ${s} – ${e} น.`;
   const range = { xMin: startTs * 1000, xMax: endTs * 1000 };
 
   let rows = [];
@@ -1665,3 +1808,91 @@ function startLiveStream() {
 }
 
 startLiveStream();
+
+// ==========================================================================
+// ===== 10. ระบบสลับหน้าระหว่างภาพรวมและวิเคราะห์แบบลื่นไหลไร้รอยต่อ (SPA Navigation) =====
+// ==========================================================================
+function setupViewSwitching() {
+  const navPills = document.querySelectorAll(".app-nav .nav-pill");
+  const viewLive = document.getElementById("viewLive");
+  const viewAnalytics = document.getElementById("viewAnalytics");
+
+  if (!viewLive || !viewAnalytics) return;
+
+  function switchView(target, updateUrl = true) {
+    const isLive = target === "live";
+
+    // อัปเดตแท็บขีดเส้นใต้
+    navPills.forEach((pill) => {
+      const isPillLive = pill.getAttribute("data-view") === "live" || pill.getAttribute("href")?.includes("index.html");
+      if ((isLive && isPillLive) || (!isLive && !isPillLive)) {
+        pill.classList.add("active");
+      } else {
+        pill.classList.remove("active");
+      }
+    });
+
+    const doSwitch = () => {
+      if (isLive) {
+        viewAnalytics.style.display = "none";
+        viewAnalytics.classList.remove("active");
+        viewLive.style.display = "flex";
+        viewLive.classList.add("active");
+
+        const ch = window.Chart && Chart.getChart("liveChart");
+        if (ch) {
+          applyResponsiveChart(ch);
+          ch.resize();
+          ch.update("none");
+        }
+      } else {
+        viewLive.style.display = "none";
+        viewLive.classList.remove("active");
+        viewAnalytics.style.display = "block";
+        viewAnalytics.classList.add("active");
+
+        const ch = window.Chart && Chart.getChart("rangeChart");
+        if (ch) {
+          applyResponsiveChart(ch);
+          ch.resize();
+          ch.update("none");
+        }
+      }
+    };
+
+    if (document.startViewTransition) {
+      document.startViewTransition(doSwitch);
+    } else {
+      doSwitch();
+    }
+
+    if (updateUrl) {
+      const targetUrl = isLive ? "index.html" : "history.html";
+      if (!window.location.pathname.endsWith(targetUrl)) {
+        try {
+          history.pushState({ view: target }, "", targetUrl);
+        } catch (e) {}
+      }
+    }
+  }
+
+  navPills.forEach((pill) => {
+    pill.addEventListener("click", (e) => {
+      e.preventDefault();
+      const href = pill.getAttribute("href");
+      const isLive = pill.getAttribute("data-view") === "live" || href?.includes("index.html");
+      switchView(isLive ? "live" : "analytics", true);
+    });
+  });
+
+  window.addEventListener("popstate", () => {
+    const isHistory = window.location.pathname.includes("history.html");
+    switchView(isHistory ? "analytics" : "live", false);
+  });
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", setupViewSwitching);
+} else {
+  setupViewSwitching();
+}

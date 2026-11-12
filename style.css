@@ -4,10 +4,43 @@
    ========================================================================== */
 
 /* ===== 1. VIEW TRANSITION API (FOR ULTRA-SMOOTH THEME TOGGLE) ===== */
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation-duration: 0.38s;
+::view-transition-group(root) {
+  animation-duration: 0.32s;
   animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+::view-transition-old(root) {
+  animation: 0.3s cubic-bezier(0.4, 0, 0.2, 1) both theme-fade-out;
+  mix-blend-mode: normal;
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  animation: 0.3s cubic-bezier(0.4, 0, 0.2, 1) both theme-fade-in;
+  mix-blend-mode: normal;
+  z-index: 2;
+}
+
+@keyframes theme-fade-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.995);
+  }
+}
+
+@keyframes theme-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(1.005);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* ===== 2. COLOR VARIABLES & THEMES ===== */
@@ -92,6 +125,11 @@
   padding: 0;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   font-family: 'Plus Jakarta Sans', 'Prompt', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background-color: var(--bg-app);
@@ -103,7 +141,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* ซิงค์ Transition สีพื้นหลัง ขอบ เงา และตัวอักษรของทุกกล่องให้ลื่นไหลเป็นเนื้อเดียวกัน */
+/* ซิงค์ Transition สีพื้นหลัง ขอบ และตัวอักษรขององค์ประกอบหลักให้ลื่นไหล 60-120fps โดยไม่หน่วง GPU */
 body,
 .card,
 .box,
@@ -114,63 +152,76 @@ body,
 .brand-badge,
 .system-time,
 .table-container,
-table,
-th,
-td,
-input,
-button,
 .kpi-card,
 .summary-text,
-.modal-card {
-  transition: background-color var(--transition-smooth),
-              border-color var(--transition-smooth),
-              color var(--transition-smooth),
-              box-shadow var(--transition-smooth);
+.modal-card,
+.app-nav,
+.nav-pill {
+  transition: background-color 0.25s ease,
+              border-color 0.25s ease,
+              color 0.2s ease;
 }
 
-/* Ambient Glow Orbs in background */
+/* เพิ่ม touch-action และตัด tap delay บนมือถือ / แท็บเล็ต / iPad */
+button,
+.action-btn,
+.theme-toggle,
+.nav-pill,
+input,
+select,
+.tab-btn {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Ambient Glow Orbs in background (ใช้ GPU Layer และลด Blur เพื่อความลื่นไหลสูงสุด) */
 .ambient-glow {
   position: fixed;
   border-radius: 50%;
-  filter: blur(120px);
+  filter: blur(40px);
   z-index: -1;
   pointer-events: none;
-  opacity: 0.42;
-  transition: opacity var(--transition-smooth), transform var(--transition-smooth);
+  opacity: 0.38;
+  will-change: transform, opacity;
+  transform: translateZ(0);
+  transition: opacity 0.3s ease;
 }
 
 .glow-1 {
-  width: 500px;
-  height: 500px;
-  background: radial-gradient(circle, rgba(14, 165, 233, 0.42), transparent 70%);
-  top: -120px;
-  right: -80px;
+  width: 480px;
+  height: 480px;
+  background: radial-gradient(circle, rgba(14, 165, 233, 0.35) 0%, rgba(14, 165, 233, 0.08) 45%, transparent 70%);
+  top: -100px;
+  right: -60px;
 }
 
 .glow-2 {
-  width: 540px;
-  height: 540px;
-  background: radial-gradient(circle, rgba(255, 94, 54, 0.35), transparent 70%);
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(255, 94, 54, 0.3) 0%, rgba(255, 94, 54, 0.06) 45%, transparent 70%);
   bottom: 40px;
-  left: -120px;
+  left: -100px;
 }
 
 .glow-3 {
-  width: 420px;
-  height: 420px;
-  background: radial-gradient(circle, rgba(139, 92, 246, 0.25), transparent 70%);
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.2) 0%, rgba(139, 92, 246, 0.04) 45%, transparent 70%);
   top: 40%;
   left: 45%;
 }
 
 [data-theme="light"] .ambient-glow {
-  opacity: 0.2;
+  opacity: 0.18;
 }
 
 .container {
   max-width: 1060px;
   margin: 0 auto;
   padding: 24px 20px 60px;
+  padding-left: max(20px, env(safe-area-inset-left));
+  padding-right: max(20px, env(safe-area-inset-right));
+  padding-bottom: max(60px, env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -249,6 +300,50 @@ header,
 
 .clock-icon {
   font-size: 12px;
+}
+
+/* Header Main Brand & Logo */
+.header-main-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 2px;
+}
+
+.brand-logo {
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.25), 0 0 16px rgba(56, 189, 248, 0.15);
+  overflow: hidden;
+  will-change: transform;
+  transform: translateZ(0);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.brand-logo:hover {
+  transform: translateY(-2px) scale(1.04) translateZ(0);
+  box-shadow: 0 6px 20px -2px rgba(56, 189, 248, 0.35);
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+.brand-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 h1 {
@@ -362,6 +457,116 @@ h1 {
   transform: rotate(360deg) scale(1.15);
 }
 
+/* ===== 4.1 TOP APP NAVIGATION TABS (UNDERLINE STYLE LIKE IMAGE 2) ===== */
+.app-nav {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  width: 100%;
+  background: transparent;
+  border-bottom: 2px solid var(--border-card);
+  padding: 0 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.app-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.nav-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 4px 12px;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color 0.2s ease, border-color 0.2s ease;
+  white-space: nowrap;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  background: transparent;
+}
+
+.nav-pill:hover {
+  color: var(--text-primary);
+  background: transparent;
+}
+
+[data-theme="light"] .nav-pill:hover {
+  color: #0f172a;
+  background: transparent;
+}
+
+.nav-pill.active {
+  color: #3b82f6;
+  border-bottom-color: #3b82f6;
+  font-weight: 700;
+  background: transparent;
+  box-shadow: none;
+}
+
+[data-theme="light"] .nav-pill.active {
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+  background: transparent;
+}
+
+[data-theme="dark"] .nav-pill.active {
+  color: #38bdf8;
+  border-bottom-color: #38bdf8;
+  background: transparent;
+}
+
+.nav-icon {
+  font-size: 17px;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+/* ===== QUICK LINK BOX ON MAIN DASHBOARD ===== */
+.box-quick-link {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-xl);
+  padding: 22px 24px;
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.quick-link-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.quick-link-text h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.quick-link-text p {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+}
+
+.quick-link-btn {
+  text-decoration: none;
+  padding: 12px 24px;
+  white-space: nowrap;
+}
+
 /* ===== 5. UPDATE BAR & SENSOR META ===== */
 .update-bar {
   display: flex;
@@ -463,10 +668,30 @@ h1 {
   color: #ffffff;
 }
 
+/* ===== 5.8 VIEW PANELS (FOR ULTRA-SMOOTH INSTANT SPA NAVIGATION) ===== */
+.view-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  animation: viewFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes viewFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* ===== 6. REALTIME HERO CARDS ===== */
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 20px;
 }
 
@@ -474,19 +699,21 @@ h1 {
   background: var(--bg-card);
   border: 1px solid var(--border-card);
   border-radius: var(--radius-xl);
-  padding: 26px 24px;
+  padding: 24px 22px;
   position: relative;
   overflow: hidden;
   box-shadow: var(--shadow-card);
-  backdrop-filter: blur(18px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   display: flex;
   flex-direction: column;
   gap: 16px;
   transform: translateZ(0);
+  will-change: transform;
 }
 
 .card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-4px) translateZ(0);
   border-color: var(--border-highlight);
 }
 
@@ -494,13 +721,15 @@ h1 {
   position: absolute;
   top: 0;
   right: 0;
-  width: 150px;
-  height: 150px;
+  width: 140px;
+  height: 140px;
   border-radius: 50%;
-  filter: blur(55px);
+  filter: blur(25px);
   pointer-events: none;
-  opacity: 0.55;
-  transition: opacity var(--transition-smooth);
+  opacity: 0.5;
+  transform: translateZ(0);
+  will-change: transform, opacity;
+  transition: opacity 0.3s ease;
 }
 
 .card-temp:hover {
@@ -509,7 +738,7 @@ h1 {
 }
 
 .card-temp .card-glow {
-  background: var(--temp-primary);
+  background: radial-gradient(circle, var(--temp-primary) 0%, transparent 70%);
 }
 
 .card-hum:hover {
@@ -518,7 +747,16 @@ h1 {
 }
 
 .card-hum .card-glow {
-  background: var(--hum-primary);
+  background: radial-gradient(circle, var(--hum-primary) 0%, transparent 70%);
+}
+
+.card-heat:hover {
+  box-shadow: 0 16px 36px -10px rgba(245, 158, 11, 0.4);
+  border-color: rgba(245, 158, 11, 0.45);
+}
+
+.card-heat .card-glow {
+  background: radial-gradient(circle, rgba(245, 158, 11, 0.38) 0%, transparent 70%);
 }
 
 .card-top {
@@ -561,6 +799,18 @@ h1 {
   border-color: #bae6fd;
 }
 
+.chip-heat {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.28);
+}
+
+[data-theme="light"] .chip-heat {
+  background: #fffbeb;
+  color: #d97706;
+  border-color: #fde68a;
+}
+
 .card p {
   font-size: 15px;
   font-weight: 500;
@@ -586,18 +836,32 @@ h1 {
   border-color: #e2e8f0;
 }
 
+.icon-heat {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.25);
+  color: #f59e0b;
+}
+
+[data-theme="light"] .icon-heat {
+  background: #fffbeb;
+  border-color: #fef3c7;
+  color: #d97706;
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.18);
+}
+
 .card-main {
   margin: 6px 0;
 }
 
 .card h2 {
-  font-size: 56px;
+  font-size: 52px;
   font-weight: 800;
   letter-spacing: -1.5px;
   line-height: 1;
   display: flex;
   align-items: baseline;
   gap: 4px;
+  font-feature-settings: "tnum";
 }
 
 .card-temp h2 {
@@ -610,10 +874,38 @@ h1 {
   text-shadow: 0 0 24px var(--hum-glow);
 }
 
+.card-heat h2 {
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .card-heat h2 {
+  color: #0f172a;
+}
+
 .card h2 .unit {
   font-size: 24px;
   font-weight: 600;
   color: var(--text-muted);
+}
+
+.card h2 .unit-heat {
+  color: #f59e0b !important;
+}
+
+[data-theme="light"] .card h2 .unit-heat {
+  color: #ea580c !important;
+}
+
+.card-sub-hint {
+  font-size: 13px;
+  color: var(--text-secondary);
+  display: block;
+  margin-top: 6px;
+  font-weight: 500;
+}
+
+[data-theme="light"] .card-sub-hint {
+  color: #64748b;
 }
 
 .card-footer {
@@ -623,6 +915,34 @@ h1 {
   padding-top: 12px;
   border-top: 1px solid var(--border-card);
   font-size: 12.5px;
+}
+
+.card-footer-heat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.heat-footer-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+[data-theme="light"] .heat-footer-label {
+  color: #64748b;
+}
+
+.heat-footer-val {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.2px;
+}
+
+[data-theme="light"] .heat-footer-val {
+  color: #0f172a;
 }
 
 .status-pill {
@@ -653,8 +973,10 @@ h1 {
   border-radius: var(--radius-xl);
   padding: 24px;
   box-shadow: var(--shadow-card);
-  backdrop-filter: blur(18px);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   position: relative;
+  transform: translateZ(0);
 }
 
 .box-header {
@@ -785,6 +1107,28 @@ h1 {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
+}
+
+.overnight-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.14);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  padding: 1px 8px;
+  border-radius: 12px;
+  margin-left: 4px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+[data-theme="light"] .overnight-tag {
+  color: #0284c7;
+  background: #e0f2fe;
+  border-color: #bae6fd;
 }
 
 .input-icon {
@@ -973,15 +1317,20 @@ button {
 /* ===== 10. MODERN DATA TABLE ===== */
 .table-container {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-card);
   margin-top: 18px;
   background: var(--bg-card);
+  max-height: 520px;
+  overflow-y: auto;
+  position: relative;
 }
 
 table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 13.5px;
   text-align: center;
 }
@@ -992,12 +1341,17 @@ th, td {
 }
 
 th {
-  background: rgba(0, 0, 0, 0.2);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-card);
   color: var(--text-secondary);
   font-weight: 700;
   text-transform: uppercase;
   font-size: 11.5px;
   letter-spacing: 0.8px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 [data-theme="light"] th {
@@ -1309,93 +1663,197 @@ tbody tr:last-child td {
   gap: 8px;
 }
 
-/* ===== 13. RESPONSIVE DESIGN (มือถือ / แท็บเล็ต / iPad) ===== */
-/* แท็บเล็ต + iPad แนวตั้ง (≤ 1024px) */
-@media (max-width: 1024px) {
-  .container { padding: 20px 16px 48px; gap: 16px; }
-  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-  .card h2 { font-size: 48px; }
-  .search-panel { display: grid; grid-template-columns: 1.3fr 1fr 1fr auto; gap: 12px; align-items: end; }
-  .input-group { min-width: 0; }
-  .search-actions button { white-space: nowrap; }
+/* ===== 13. RESPONSIVE DESIGN (โทรศัพท์ / แท็บเล็ต / iPad) ===== */
+
+/* --- 13.1 iPad แนวนอน & จอคอมขนาดเล็ก (≤ 1180px) --- */
+@media (max-width: 1180px) {
+  .container { max-width: 960px; padding: 20px 18px 48px; gap: 18px; }
+  .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .card { padding: 22px 18px; }
+  .card h2 { font-size: 46px; }
+  .chart-wrapper { height: 320px; }
 }
 
-/* iPad / แท็บเล็ตแนวตั้ง (≤ 900px): ฟอร์มค้นหาเป็น 2 แถว ไม่เบียดกัน */
-@media (max-width: 900px) {
-  .search-panel { grid-template-columns: 1fr 1fr; }
+/* --- 13.2 iPad แนวตั้ง & แท็บเล็ตทั่วไป (≤ 1024px) --- */
+@media (max-width: 1024px) {
+  .container {
+    padding: 18px 16px 44px;
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+    padding-bottom: max(44px, env(safe-area-inset-bottom));
+    gap: 16px;
+  }
+  .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .card { padding: 18px 14px; gap: 12px; }
+  .card h2 { font-size: 38px; }
+  .card h2 .unit { font-size: 18px; }
+  .card-top .icon-bubble { width: 44px; height: 44px; font-size: 22px; }
+  .card p { font-size: 13.5px; }
+  .chart-wrapper { height: 300px; }
+
+  /* ฟอร์มค้นหาบนแท็บเล็ต: วันที่เต็มแถว เวลา 2 ช่องคู่กัน ปุ่มเต็มแถว */
+  .search-panel {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
   .search-panel .input-group:first-child { grid-column: 1 / -1; }
   .search-actions { grid-column: 1 / -1; width: 100%; }
-  .search-actions button { width: 100%; justify-content: center; }
+  .search-actions button { width: 100%; justify-content: center; min-height: 44px; }
 }
 
-/* แท็บเล็ตเล็ก / มือถือแนวนอน (≤ 768px) */
+/* --- 13.3 แท็บเล็ตขนาดเล็ก / iPad mini (≤ 850px) --- */
+@media (max-width: 850px) {
+  .brand-logo { width: 46px; height: 46px; border-radius: 12px; }
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .card-heat { grid-column: 1 / -1; }
+  .card-heat .card-footer { display: flex; flex-direction: row; justify-content: space-between; align-items: center; }
+  .card h2 { font-size: 40px; }
+  .chart-wrapper { height: 280px; }
+}
+
+/* --- 13.4 แท็บเล็ตเล็กมาก / มือถือแนวนอน (≤ 768px) --- */
 @media (max-width: 768px) {
   .app-header { flex-direction: column; align-items: flex-start; gap: 12px; }
   .header-right { width: 100%; justify-content: space-between; }
-  .search-panel { grid-template-columns: 1fr 1fr; }
-  .search-panel .input-group:first-child { grid-column: 1 / -1; }
-  .search-actions { grid-column: 1 / -1; width: 100%; }
-  .search-actions button { width: 100%; justify-content: center; }
-  .chart-wrapper { height: 290px; }
+  .chart-wrapper { height: 270px; }
   .box-header { flex-wrap: wrap; gap: 10px; }
+  .export-bar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: 100%; }
+  .export-bar button { width: 100%; justify-content: center; padding: 10px 6px; font-size: 12.5px; min-height: 44px; }
 }
 
-/* มือถือ (≤ 600px) */
+/* --- 13.5 โทรศัพท์มือถือทั่วไป (iPhone, Android) (≤ 600px) --- */
 @media (max-width: 600px) {
-  .container { padding: 12px 10px 40px; gap: 12px; }
+  .container {
+    padding: 12px 10px 36px;
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+    padding-bottom: max(36px, env(safe-area-inset-bottom));
+    gap: 12px;
+  }
   .box { padding: 14px 12px; border-radius: 16px; }
-  .app-header h1 { font-size: 20px; line-height: 1.35; }
-  .app-header .subtitle { font-size: 12.5px; }
 
-  .update-bar { flex-direction: column; align-items: flex-start; gap: 8px; padding: 10px 12px; }
-  .device-meta { flex-wrap: wrap; gap: 6px; }
-  .meta-tag { white-space: nowrap; font-size: 10.5px; padding: 4px 8px; }
+  /* ส่วนหัว */
+  .header-main-brand { gap: 10px; }
+  .brand-logo { width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0; }
+  .app-header h1 { font-size: 19px; line-height: 1.3; }
+  .app-header .subtitle { font-size: 12px; }
 
-  /* การ์ดอุณหภูมิ/ความชื้นวางคู่กัน */
-  .cards { gap: 10px; }
-  .card { padding: 14px 12px; border-radius: 16px; }
+  /* เมนูสลับหน้าบนมือถือแบบขีดเส้นใต้ */
+  .app-nav {
+    gap: 18px;
+    padding: 0 4px;
+    border-bottom-width: 2px;
+  }
+  .nav-pill {
+    padding: 8px 2px 10px;
+    font-size: 13.5px;
+    gap: 6px;
+    min-height: 44px;
+  }
+  .nav-icon { font-size: 16px; }
+
+  /* แถบเวลาอัปเดตและข้อมูลเครื่อง */
+  .update-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 12px;
+  }
+  .device-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
+  }
+  .meta-tag {
+    font-size: 10.5px;
+    padding: 3px 7px;
+    border-radius: 6px;
+    white-space: normal;
+    line-height: 1.35;
+  }
+
+  /* การ์ดวัดค่า 3 ช่อง: อุณหภูมิ & ความชื้น 2 ช่องคู่กัน, Heat Index เต็มแถวล่าง */
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .card { padding: 14px 12px; border-radius: 16px; gap: 10px; }
   .card-top { gap: 6px; }
-  .card-top .icon-bubble { width: 34px; height: 34px; font-size: 16px; }
-  .card-chip { font-size: 9px; padding: 2px 6px; letter-spacing: .5px; }
-  .metric-label p { font-size: 13px; }
-  .card h2 { font-size: 34px; margin: 6px 0; white-space: nowrap; }
-  .card h2 .unit { font-size: 15px; }
-  .card-footer { flex-direction: column; align-items: flex-start; gap: 4px; }
-  .status-pill { font-size: 10.5px; padding: 3px 8px; }
-  .sensor-info { font-size: 10.5px; }
+  .card-top .icon-bubble { width: 36px; height: 36px; font-size: 18px; border-radius: 10px; }
+  .card-chip { font-size: 8.5px; padding: 2px 6px; letter-spacing: 0.5px; }
+  .metric-label p { font-size: 12.5px; }
+  .card h2 { font-size: 32px; margin: 4px 0; white-space: nowrap; }
+  .card h2 .unit { font-size: 14px; }
+  .card-footer { flex-direction: column; align-items: flex-start; gap: 4px; padding-top: 8px; }
+  .status-pill { font-size: 10px; padding: 2px 6px; }
+  .sensor-info { font-size: 10px; }
 
-  .section-sub { font-size: 12px; }
+  /* การ์ด Heat Index แบบพิเศษเต็มแถว */
+  .card-heat { grid-column: 1 / -1; }
+  .card-heat h2 { font-size: 34px; }
+  .card-sub-hint { font-size: 11.5px; margin-top: 2px; }
+  .card-heat .card-footer {
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+  }
+  .heat-footer-label { font-size: 12px; }
+  .heat-footer-val { font-size: 12.5px; }
+
+  /* กราฟ */
+  .section-sub { font-size: 11.5px; }
   .chart-wrapper { height: 250px; }
 
-  /* ฟอร์มค้นหา: วันที่เต็มแถว, เวลาคู่กัน, ปุ่มเต็มแถว */
+  /* ฟอร์มค้นหา */
   .search-panel { padding: 12px; gap: 10px; }
-  .input-group input { font-size: 16px; min-width: 0; width: 100%; } /* 16px กัน iPhone ซูมอัตโนมัติ */
+  .input-group label { font-size: 12.5px; }
+  .input-group input { font-size: 16px; min-height: 44px; border-radius: 10px; }
+  .time-select { min-height: 44px; border-radius: 10px; padding: 0 8px; }
+  .time-select select { font-size: 16px; padding: 8px 2px; }
   .range-hint { font-size: 12px; }
 
-  /* KPI 3 ช่องแบบกะทัดรัด */
-  .kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-  .kpi-card { padding: 10px 8px; }
-  .kpi-label { font-size: 10.5px; }
-  .kpi-val { font-size: 16px; white-space: nowrap; }
-  .kpi-sub { font-size: 9.5px; }
+  /* KPI Summary 3 ช่อง */
+  .kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .kpi-card { padding: 10px 6px; border-radius: 10px; }
+  .kpi-label { font-size: 9.5px; }
+  .kpi-val { font-size: 15px; }
+  .kpi-sub { font-size: 8.5px; line-height: 1.3; }
 
-  /* ตาราง: ไม่ตัดบรรทัด, ซ่อนคอลัมน์ลำดับ, เลื่อนแนวนอนได้ถ้าจำเป็น */
-  .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  table { font-size: 12.5px; }
-  th, td { padding: 9px 8px; white-space: nowrap; }
+  /* ตารางข้อมูล: ซ่อนคอลัมน์ลำดับเพื่อความกระชับ และเลื่อนแนวนอนลื่นไหล */
+  .table-container { max-height: 460px; -webkit-overflow-scrolling: touch; border-radius: 12px; }
+  table { font-size: 12px; }
+  th, td { padding: 9px 6px; white-space: nowrap; }
   th:first-child, td:first-child { display: none; }
 
-  .export-bar button { padding: 8px 6px; font-size: 12px; }
+  /* ปุ่มดาวน์โหลด */
+  .export-bar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; width: 100%; }
+  .export-bar button { padding: 8px 4px; font-size: 11.5px; min-height: 42px; border-radius: 8px; }
 }
 
-/* มือถือจอเล็กมาก (≤ 360px) */
-@media (max-width: 360px) {
-  .card h2 { font-size: 28px; }
-  .container { padding: 10px 6px 32px; }
+/* --- 13.6 โทรศัพท์จอเล็กมาก (≤ 375px เช่น iPhone SE, Galaxy Z Flip จอนอก) --- */
+@media (max-width: 375px) {
+  .container { padding: 10px 6px 28px; }
   .box { padding: 12px 8px; }
-  table { font-size: 11.5px; }
+  .brand-logo { width: 34px; height: 34px; border-radius: 8px; }
+  .app-header h1 { font-size: 17px; }
+  .app-header .subtitle { font-size: 11px; }
+
+  .nav-pill { font-size: 12px; padding: 6px 1px 8px; }
+  .nav-icon { font-size: 14px; }
+
+  .card h2 { font-size: 27px; }
+  .card h2 .unit { font-size: 12px; }
+  .card-top .icon-bubble { width: 30px; height: 30px; font-size: 15px; }
+
+  .chart-wrapper { height: 220px; }
+  .kpi-grid { grid-template-columns: 1fr; gap: 6px; }
+  .kpi-card { padding: 8px 10px; }
+  .kpi-val { font-size: 17px; }
+
+  .table-container { max-height: 380px; }
+  table { font-size: 11px; }
   th, td { padding: 8px 4px; }
-  .kpi-grid { grid-template-columns: 1fr; }
 }
 
 /* ===== ช่วงข้อมูลที่มีอยู่จริง (ใต้ช่องค้นหา) ===== */
@@ -1430,6 +1888,7 @@ tbody tr:last-child td {
   -webkit-appearance: none; appearance: none;
 }
 .time-select select option { color: #0f172a; background: #fff; }
+[data-theme="dark"] .time-select select option { color: #f8fafc; background: #0b111e; }
 .time-select .ts-colon { font-weight: 700; color: var(--text-secondary); }
 .time-select .ts-unit { font-size: 13px; color: var(--text-secondary); }
 

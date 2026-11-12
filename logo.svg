@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="50%" stop-color="#111c35"/>
+      <stop offset="100%" stop-color="#080e1e"/>
+    </linearGradient>
+
+    <!-- Border Glow Gradient -->
+    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff5e36" stop-opacity="0.8"/>
+      <stop offset="50%" stop-color="#38bdf8" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#10b981" stop-opacity="0.8"/>
+    </linearGradient>
+
+    <!-- Temperature Flame / Bulb Gradient -->
+    <linearGradient id="tempGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ef4444"/>
+      <stop offset="45%" stop-color="#ff5e36"/>
+      <stop offset="100%" stop-color="#fbbf24"/>
+    </linearGradient>
+
+    <!-- Humidity Water Drop Gradient -->
+    <linearGradient id="humGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="60%" stop-color="#0ea5e9"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+
+    <!-- IoT Pulse Gradient -->
+    <linearGradient id="pulseGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="50%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#a855f7"/>
+    </linearGradient>
+
+    <!-- Glow Filters -->
+    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="16" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+
+    <filter id="subtleGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Squircle Base Container -->
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bgGrad)"/>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="none" stroke="url(#borderGrad)" stroke-width="8" opacity="0.75"/>
+
+  <!-- Background Ambience Orbs inside logo -->
+  <circle cx="180" cy="220" r="110" fill="#ff5e36" opacity="0.18" filter="url(#softGlow)"/>
+  <circle cx="330" cy="240" r="120" fill="#0ea5e9" opacity="0.22" filter="url(#softGlow)"/>
+
+  <!-- Central Symbol: Intertwined Temperature Gauge & Water Drop -->
+  <g filter="url(#subtleGlow)">
+    <!-- Left: Temperature Thermometer Stem & Bulb -->
+    <g transform="translate(140, 95)">
+      <!-- Tube track -->
+      <rect x="36" y="25" width="28" height="155" rx="14" fill="#1e293b" stroke="rgba(255,255,255,0.12)" stroke-width="4"/>
+      <!-- Liquid core -->
+      <rect x="42" y="70" width="16" height="105" rx="8" fill="url(#tempGrad)"/>
+      <!-- Graduations -->
+      <line x1="24" y1="55" x2="33" y2="55" stroke="#ff8f70" stroke-width="3.5" stroke-linecap="round"/>
+      <line x1="20" y1="75" x2="33" y2="75" stroke="#ff8f70" stroke-width="4.5" stroke-linecap="round"/>
+      <line x1="24" y1="95" x2="33" y2="95" stroke="#ff8f70" stroke-width="3.5" stroke-linecap="round"/>
+      <line x1="20" y1="115" x2="33" y2="115" stroke="#ff8f70" stroke-width="4.5" stroke-linecap="round"/>
+      <line x1="24" y1="135" x2="33" y2="135" stroke="#ff8f70" stroke-width="3.5" stroke-linecap="round"/>
+      <!-- Bulb -->
+      <circle cx="50" cy="190" r="38" fill="url(#tempGrad)"/>
+      <circle cx="50" cy="190" r="38" fill="none" stroke="#fff" stroke-width="3.5" opacity="0.4"/>
+      <!-- Inner Bulb Shine -->
+      <circle cx="40" cy="178" r="11" fill="#fff" opacity="0.55"/>
+    </g>
+
+    <!-- Right: Stylized Humidity Water Droplet -->
+    <path d="M 335 110
+             C 335 110, 248 235, 248 305
+             A 88 88 0 0 0 424 305
+             C 424 235, 335 110, 335 110 Z"
+          fill="url(#humGrad)"
+          opacity="0.94"/>
+
+    <!-- Droplet Gloss Highlight -->
+    <path d="M 335 145
+             C 335 145, 275 240, 275 295
+             A 60 60 0 0 0 335 355
+             C 310 335, 300 300, 305 270
+             C 312 230, 335 180, 335 145 Z"
+          fill="#ffffff"
+          opacity="0.32"/>
+    <circle cx="365" cy="275" r="14" fill="#ffffff" opacity="0.55"/>
+  </g>
+
+  <!-- Bottom IoT Microchip / Wave Sensor Waves -->
+  <g transform="translate(106, 375)">
+    <!-- Circuit Base Line -->
+    <path d="M 20 50 L 80 50 L 105 25 L 140 25 L 155 50 L 195 50 L 210 25 L 245 25 L 270 50 L 300 50"
+          fill="none"
+          stroke="url(#pulseGrad)"
+          stroke-width="6"
+          stroke-linecap="round"
+          stroke-linejoin="round"/>
+    
+    <!-- Connection Nodes -->
+    <circle cx="20" cy="50" r="7" fill="#10b981"/>
+    <circle cx="105" cy="25" r="5" fill="#38bdf8"/>
+    <circle cx="155" cy="50" r="6" fill="#38bdf8"/>
+    <circle cx="210" cy="25" r="5" fill="#38bdf8"/>
+    <circle cx="300" cy="50" r="7" fill="#a855f7"/>
+
+    <!-- Center Pulse Signal -->
+    <circle cx="150" cy="0" r="4" fill="#38bdf8">
+      <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+</svg>

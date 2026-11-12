@@ -2,8 +2,15 @@
 <html lang="th" data-theme="dark">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>ระบบวัดอุณหภูมิและความชื้น ESP32 IoT Station Dashboard</title>
+  
+  <!-- ไอคอนบนแท็บเบราว์เซอร์ (Favicon) & ไอคอนแอปสำหรับ คอม โทรศัพท์ แท็บเล็ต ไอแพด -->
+  <link rel="icon" type="image/svg+xml" href="logo.svg?v=1">
+  <link rel="apple-touch-icon" href="logo.svg?v=1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ESP32 IoT">
   
   <!-- ป้องกัน Flash of unstyled theme ตอนโหลดหน้าเว็บ -->
   <script>
@@ -23,7 +30,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=9">
+  <link rel="stylesheet" href="style.css?v=12">
   
   <!-- Chart.js 4.4.1 ตามคู่มือขั้นที่ 5.2 -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -57,13 +64,16 @@
             <span class="badge-dot"></span>
             ESP32 IoT COMMAND CENTER
           </div>
-          <span class="system-time">
-            <span class="clock-icon">🕒</span>
-            <span id="digitalClock">--:--:--</span>
-          </span>
         </div>
-        <h1>ระบบวัดอุณหภูมิและความชื้น</h1>
-        <p class="subtitle">ระบบตรวจวัดสภาพแวดล้อม Real-time</p>
+        <div class="header-main-brand">
+          <div class="brand-logo">
+            <img src="logo.svg?v=1" alt="ESP32 IoT Logo" class="brand-logo-img" width="52" height="52">
+          </div>
+          <div class="brand-text">
+            <h1>ระบบวัดอุณหภูมิและความชื้น</h1>
+            <p class="subtitle">ระบบตรวจวัดสภาพแวดล้อม Real-time</p>
+          </div>
+        </div>
       </div>
 
       <div class="header-right">
@@ -94,183 +104,224 @@
       </div>
     </div>
 
-    <!-- ส่วนการ์ดแสดงตัวเลขอุณหภูมิและความชื้นแบบ Real-time -->
-    <section class="cards">
-      <!-- การ์ดอุณหภูมิ -->
-      <div class="card card-temp">
-        <div class="card-glow"></div>
-        <div class="card-border-glow"></div>
-        <div class="card-top">
-          <div class="metric-label">
-            <span class="card-chip chip-temp">TEMPERATURE</span>
-            <p>อุณหภูมิ</p>
-          </div>
-          <div class="icon-bubble icon-temp">
-            <span>🌡️</span>
-          </div>
-        </div>
-        <div class="card-main">
-          <h2><span id="temp">--</span><span class="unit">°C</span></h2>
-        </div>
-        <div class="card-footer">
-          <span class="status-pill" id="tempTag">รอสัญญาณข้อมูล</span>
-          <span class="sensor-info" id="liveTempMinMax">DHT11 (ขา D22)</span>
-        </div>
-      </div>
+    <!-- เมนูนำทางสลับหน้า (Tabs Navigation สไตล์เดียวกับภาพที่ 2) -->
+    <nav class="app-nav">
+      <a href="index.html" class="nav-pill active" data-view="live">
+        <span class="nav-icon">📊</span>
+        <span>แดชบอร์ดภาพรวม</span>
+      </a>
+      <a href="history.html" class="nav-pill" data-view="analytics">
+        <span class="nav-icon">📈</span>
+        <span>กราฟแนวโน้ม (Analytics)</span>
+      </a>
+    </nav>
 
-      <!-- การ์ดความชื้น -->
-      <div class="card card-hum">
-        <div class="card-glow"></div>
-        <div class="card-border-glow"></div>
-        <div class="card-top">
-          <div class="metric-label">
-            <span class="card-chip chip-hum">HUMIDITY</span>
-            <p>ความชื้นสัมพัทธ์</p>
+    <!-- มุมมอง 1: แดชบอร์ดภาพรวม (Live Overview) -->
+    <main id="viewLive" class="view-panel active">
+      <!-- ส่วนการ์ดแสดงตัวเลขอุณหภูมิและความชื้นแบบ Real-time -->
+      <section class="cards">
+        <!-- การ์ดอุณหภูมิ -->
+        <div class="card card-temp">
+          <div class="card-glow"></div>
+          <div class="card-border-glow"></div>
+          <div class="card-top">
+            <div class="metric-label">
+              <span class="card-chip chip-temp">TEMPERATURE</span>
+              <p>อุณหภูมิ</p>
+            </div>
+            <div class="icon-bubble icon-temp">
+              <span>🌡️</span>
+            </div>
           </div>
-          <div class="icon-bubble icon-hum">
-            <span>💧</span>
+          <div class="card-main">
+            <h2><span id="temp">--</span><span class="unit">°C</span></h2>
+          </div>
+          <div class="card-footer">
+            <span class="status-pill" id="tempTag">รอสัญญาณข้อมูล</span>
+            <span class="sensor-info" id="liveTempMinMax">DHT11 (ขา D22)</span>
           </div>
         </div>
-        <div class="card-main">
-          <h2><span id="hum">--</span><span class="unit">%</span></h2>
-        </div>
-        <div class="card-footer">
-          <span class="status-pill" id="humTag">รอสัญญาณข้อมูล</span>
-          <span class="sensor-info" id="liveHumMinMax">ช่วงวัด 20% - 90%</span>
-        </div>
-      </div>
-    </section>
 
-    <!-- กราฟ Real-time ย้อนหลัง 24 ชั่วโมง (คง id="liveChart" และ class="box" ตามคู่มือ) -->
-    <section class="box box-chart">
-      <div class="box-header">
-        <div class="title-with-icon">
-          <div class="section-icon">📈</div>
-          <div>
-            <h3>กราฟ 24 ชั่วโมงล่าสุด</h3>
-            <span class="section-sub">บันทึกลง Google Sheet ทุก 5 นาที (สูงสุด 288 จุด)</span>
+        <!-- การ์ดความชื้น -->
+        <div class="card card-hum">
+          <div class="card-glow"></div>
+          <div class="card-border-glow"></div>
+          <div class="card-top">
+            <div class="metric-label">
+              <span class="card-chip chip-hum">HUMIDITY</span>
+              <p>ความชื้นสัมพัทธ์</p>
+            </div>
+            <div class="icon-bubble icon-hum">
+              <span>💧</span>
+            </div>
+          </div>
+          <div class="card-main">
+            <h2><span id="hum">--</span><span class="unit">%</span></h2>
+          </div>
+          <div class="card-footer">
+            <span class="status-pill" id="humTag">รอสัญญาณข้อมูล</span>
+            <span class="sensor-info" id="liveHumMinMax">ช่วงวัด 20% - 90%</span>
           </div>
         </div>
-        <div class="header-badges">
-          <span class="badge live-badge"><span class="live-dot"></span> LIVE AUTO-SYNC</span>
-        </div>
-      </div>
-      <div class="chart-wrapper">
-        <canvas id="liveChart"></canvas>
-      </div>
-    </section>
 
-    <!-- ส่วนค้นหาข้อมูลย้อนหลังตามช่วงเวลา (คง id ตามคู่มือครบถ้วน) -->
-    <section class="box box-search">
-      <div class="box-header">
-        <div class="title-with-icon">
-          <div class="section-icon">🔎</div>
-          <div>
-            <h3>ค้นหาข้อมูลตามช่วงเวลา</h3>
-            <span class="section-sub">สืบค้นประวัติย้อนหลัง พร้อมวิเคราะห์ค่าสถิติ ต่ำสุด-สูงสุด-เฉลี่ย</span>
+        <!-- การ์ดรู้สึกจริง (Heat Index) ตามภาพตัวอย่าง -->
+        <div class="card card-heat">
+          <div class="card-glow"></div>
+          <div class="card-border-glow"></div>
+          <div class="card-top">
+            <div class="metric-label">
+              <span class="card-chip chip-heat">HEAT INDEX</span>
+              <p>รู้สึกจริง (Heat Index)</p>
+            </div>
+            <div class="icon-bubble icon-heat">
+              <span>☀️</span>
+            </div>
+          </div>
+          <div class="card-main">
+            <h2><span id="heatIndex">--</span><span class="unit unit-heat">°C</span></h2>
+            <span class="card-sub-hint">อิงผลกระทบจากความชื้น</span>
+          </div>
+          <div class="card-footer card-footer-heat">
+            <span class="heat-footer-label">การสัมผัส:</span>
+            <span class="heat-footer-val" id="heatTouchVal">ตามร่างกาย</span>
           </div>
         </div>
-        <div class="header-controls">
-          <button id="quickTodayBtn" class="btn-sm btn-ghost" title="ตั้งค่าค้นหาวันนี้">📅 วันนี้</button>
-        </div>
-      </div>
+      </section>
 
-      <!-- กล่องฟอร์มค้นหา -->
-      <div class="search search-panel">
-        <div class="input-group">
-          <label for="date"><span class="input-icon">📅</span> วันที่</label>
-          <input type="date" id="date">
-        </div>
-        <div class="input-group">
-          <label for="start"><span class="input-icon">⏰</span> ตั้งแต่</label>
-          <input type="hidden" id="start" value="11:00">
-          <div class="time-select" data-for="start">
-            <select class="ts-h" aria-label="ชั่วโมงเริ่มต้น"></select><span class="ts-colon">:</span><select class="ts-m" aria-label="นาทีเริ่มต้น"></select><span class="ts-unit">น.</span>
+      <!-- กราฟ Real-time ย้อนหลัง 24 ชั่วโมง (คง id="liveChart" และ class="box" ตามคู่มือ) -->
+      <section class="box box-chart">
+        <div class="box-header">
+          <div class="title-with-icon">
+            <div class="section-icon">📈</div>
+            <div>
+              <h3>กราฟ 24 ชั่วโมงล่าสุด</h3>
+              <span class="section-sub">บันทึกลง Google Sheet ทุก 5 นาที (สูงสุด 288 จุด)</span>
+            </div>
+          </div>
+          <div class="header-badges">
+            <span class="badge live-badge"><span class="live-dot"></span> LIVE AUTO-SYNC</span>
           </div>
         </div>
-        <div class="input-group">
-          <label for="end"><span class="input-icon">🏁</span> ถึง</label>
-          <input type="hidden" id="end" value="15:00">
-          <div class="time-select" data-for="end">
-            <select class="ts-h" aria-label="ชั่วโมงสิ้นสุด"></select><span class="ts-colon">:</span><select class="ts-m" aria-label="นาทีสิ้นสุด"></select><span class="ts-unit">น.</span>
+        <div class="chart-wrapper">
+          <canvas id="liveChart"></canvas>
+        </div>
+      </section>
+    </main>
+
+    <!-- มุมมอง 2: กราฟแนวโน้ม (Analytics & History) -->
+    <main id="viewAnalytics" class="view-panel" style="display: none;">
+      <!-- ส่วนค้นหาข้อมูลย้อนหลังตามช่วงเวลา -->
+      <section class="box box-search">
+        <div class="box-header">
+          <div class="title-with-icon">
+            <div class="section-icon">🔎</div>
+            <div>
+              <h3>ตัวกรองช่วงเวลา</h3>
+              <span class="section-sub">เลือกวันที่และเวลาที่ต้องการสืบค้น (รองรับการค้นหาข้ามเที่ยงคืน)</span>
+            </div>
+          </div>
+          <div class="header-controls">
+            <button id="quickTodayBtn" class="btn-sm btn-ghost" title="ตั้งค่าค้นหาวันนี้">📅 วันนี้</button>
           </div>
         </div>
-        <div class="search-actions">
-          <button id="searchBtn" class="btn-primary">
-            <span>ค้นหาข้อมูล</span>
-            <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+
+        <!-- กล่องฟอร์มค้นหา -->
+        <div class="search search-panel">
+          <div class="input-group">
+            <label for="date"><span class="input-icon">📅</span> วันที่</label>
+            <input type="date" id="date">
+          </div>
+          <div class="input-group">
+            <label for="start"><span class="input-icon">⏰</span> ตั้งแต่</label>
+            <input type="hidden" id="start" value="">
+            <div class="time-select" data-for="start">
+              <select class="ts-h" aria-label="ชั่วโมงเริ่มต้น"><option value="">--</option></select><span class="ts-colon">:</span><select class="ts-m" aria-label="นาทีเริ่มต้น"><option value="">--</option></select><span class="ts-unit">น.</span>
+            </div>
+          </div>
+          <div class="input-group">
+            <label for="end"><span class="input-icon">⌛</span> ถึง <span id="overnightTag" class="overnight-tag" style="display: none;">🌙 ข้ามวัน</span></label>
+            <input type="hidden" id="end" value="">
+            <div class="time-select" data-for="end">
+              <select class="ts-h" aria-label="ชั่วโมงสิ้นสุด"><option value="">--</option></select><span class="ts-colon">:</span><select class="ts-m" aria-label="นาทีสิ้นสุด"><option value="">--</option></select><span class="ts-unit">น.</span>
+            </div>
+          </div>
+          <div class="search-actions">
+            <button id="searchBtn" class="btn-primary">
+              <span>ค้นหาข้อมูล</span>
+              <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- ปุ่มดาวน์โหลดผลการค้นหา -->
+        <div class="export-bar">
+          <button id="exportCsvBtn" class="btn-outline" style="display: none;" title="ตารางข้อมูล เปิดด้วย Excel ได้">
+              📥 ตาราง (CSV)
+          </button>
+          <button id="exportPngBtn" class="btn-outline" style="display: none;" title="รูปกราฟของช่วงที่เลือก">
+              🖼️ กราฟ (PNG)
+          </button>
+          <button id="exportReportBtn" class="btn-outline" style="display: none;" title="กราฟ + สรุป + ตาราง ในไฟล์เดียว">
+              📄 รายงาน (PDF)
           </button>
         </div>
-      </div>
 
-      <!-- ปุ่มดาวน์โหลดผลการค้นหา -->
-      <div class="export-bar">
-        <button id="exportCsvBtn" class="btn-outline" style="display: none;" title="ตารางข้อมูล เปิดด้วย Excel ได้">
-            📥 ตาราง (CSV)
-        </button>
-        <button id="exportPngBtn" class="btn-outline" style="display: none;" title="รูปกราฟของช่วงที่เลือก">
-            🖼️ กราฟ (PNG)
-        </button>
-        <button id="exportReportBtn" class="btn-outline" style="display: none;" title="กราฟ + สรุป + ตาราง ในไฟล์เดียว">
-            📄 รายงาน (PDF)
-        </button>
-      </div>
+        <!-- ช่วงข้อมูลที่มีอยู่จริง (อัปเดตอัตโนมัติ) -->
+        <p id="dataRangeHint" class="range-hint"></p>
 
-      <!-- ช่วงข้อมูลที่มีอยู่จริง (อัปเดตอัตโนมัติ) -->
-      <p id="dataRangeHint" class="range-hint"></p>
-
-      <!-- สรุปผลสถิติ KPI Cards และ Summary Text (คง id="summary" ตามคู่มือ) -->
-      <div id="summaryWrap" class="summary-wrapper" style="display: none;">
-        <div class="kpi-grid">
-          <div class="kpi-card kpi-temp">
-            <span class="kpi-label">อุณหภูมิเฉลี่ย</span>
-            <span class="kpi-val" id="kpiAvgTemp">-- °C</span>
-            <span class="kpi-sub" id="kpiRangeTemp">ต่ำสุด -- | สูงสุด --</span>
+        <!-- สรุปผลสถิติ KPI Cards และ Summary Text -->
+        <div id="summaryWrap" class="summary-wrapper" style="display: none;">
+          <div class="kpi-grid">
+            <div class="kpi-card kpi-temp">
+              <span class="kpi-label">อุณหภูมิเฉลี่ย</span>
+              <span class="kpi-val" id="kpiAvgTemp">-- °C</span>
+              <span class="kpi-sub" id="kpiRangeTemp">ต่ำสุด -- | สูงสุด --</span>
+            </div>
+            <div class="kpi-card kpi-hum">
+              <span class="kpi-label">ความชื้นเฉลี่ย</span>
+              <span class="kpi-val" id="kpiAvgHum">-- %</span>
+              <span class="kpi-sub" id="kpiRangeHum">ต่ำสุด -- | สูงสุด --</span>
+            </div>
+            <div class="kpi-card kpi-count">
+              <span class="kpi-label">จำนวนข้อมูลที่พบ</span>
+              <span class="kpi-val" id="kpiCount">-- ชุด</span>
+              <span class="kpi-sub" id="kpiTimeSpan">ช่วงเวลาที่สืบค้น</span>
+            </div>
           </div>
-          <div class="kpi-card kpi-hum">
-            <span class="kpi-label">ความชื้นเฉลี่ย</span>
-            <span class="kpi-val" id="kpiAvgHum">-- %</span>
-            <span class="kpi-sub" id="kpiRangeHum">ต่ำสุด -- | สูงสุด --</span>
-          </div>
-          <div class="kpi-card kpi-count">
-            <span class="kpi-label">จำนวนข้อมูลที่พบ</span>
-            <span class="kpi-val" id="kpiCount">-- ชุด</span>
-            <span class="kpi-sub" id="kpiTimeSpan">ช่วงเวลาที่สืบค้น</span>
-          </div>
+          <p id="summary" class="summary-text"></p>
         </div>
-        <p id="summary" class="summary-text"></p>
-      </div>
 
-      <!-- กราฟผลการค้นหา (คง id="rangeChart" ตามคู่มือ) -->
-      <div class="chart-wrapper chart-range-wrapper">
-        <canvas id="rangeChart"></canvas>
-      </div>
+        <!-- กราฟผลการค้นหา -->
+        <div id="chartSection" class="chart-wrapper chart-range-wrapper">
+          <canvas id="rangeChart"></canvas>
+        </div>
 
-      <!-- ตารางแสดงข้อมูล (คง id="dataTable" ตามคู่มือ) -->
-      <div class="table-container">
-        <table id="dataTable">
-          <thead>
-            <tr>
-              <th>ลำดับ</th>
-              <th>วันที่</th>
-              <th>เวลา</th>
-              <th>อุณหภูมิ (°C)</th>
-              <th>ความชื้น (%)</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td colspan="5" class="empty-state">
-                <div class="empty-content">
-                  <span class="empty-icon">📊</span>
-                  <p>กดปุ่ม <strong>"🔄 ดึงจาก Google Sheet"</strong> หรือ <strong>"ค้นหาข้อมูล"</strong> เพื่อแสดงข้อมูลลงในตาราง</p>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
+        <!-- ตารางแสดงข้อมูล -->
+        <div id="tableSection" class="table-container">
+          <table id="dataTable">
+            <thead>
+              <tr>
+                <th>ลำดับ</th>
+                <th>วันที่</th>
+                <th>เวลา</th>
+                <th>อุณหภูมิ (°C)</th>
+                <th>ความชื้น (%)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td colspan="5" class="empty-state">
+                  <div class="empty-content">
+                    <span class="empty-icon">📊</span>
+                    <p>กดปุ่ม <strong>"ค้นหาข้อมูล"</strong> เพื่อแสดงผลข้อมูลลงในกราฟและตาราง</p>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
 
     <!-- Footer -->
     <footer class="app-footer">
@@ -331,7 +382,6 @@
       </div>
     </div>
   </div>
-
-  <script type="module" src="app.js?v=9"></script>
+  <script type="module" src="app.js?v=12"></script>
 </body>
 </html>
