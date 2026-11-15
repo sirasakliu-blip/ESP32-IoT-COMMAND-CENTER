@@ -1133,14 +1133,14 @@ h1 {
 /* ===== 8. SEARCH FILTER PANEL ===== */
 .search,
 .search-panel {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 18px;
   align-items: flex-end;
   background: rgba(0, 0, 0, 0.08);
   border: 1px solid var(--border-card);
   border-radius: var(--radius-lg);
-  padding: 16px 20px;
+  padding: 18px 20px;
   margin-bottom: 16px;
 }
 
@@ -1152,8 +1152,30 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  flex: 1;
-  min-width: 150px;
+  min-width: 0;
+  width: 100%;
+}
+
+.quick-ranges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.quick-ranges .btn-sm {
+  border-radius: 20px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+}
+
+.quick-ranges .btn-sm:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  background: rgba(56, 189, 248, 0.1);
 }
 
 .input-group label {
@@ -1221,9 +1243,20 @@ input[type="time"]:focus {
 }
 
 .search-actions {
+  grid-column: 1 / -1;
+  width: 100%;
   display: flex;
   gap: 10px;
   align-items: center;
+  margin-top: 4px;
+}
+
+.search-actions .btn-primary {
+  width: 100%;
+  min-height: 46px;
+  font-size: 15px;
+  border-radius: 12px;
+  justify-content: center;
 }
 
 button {
@@ -1747,15 +1780,14 @@ tbody tr:last-child td {
   .card p { font-size: 13.5px; }
   .chart-wrapper { height: 300px; }
 
-  /* ฟอร์มค้นหาบนแท็บเล็ต: วันที่เต็มแถว เวลา 2 ช่องคู่กัน ปุ่มเต็มแถว */
+  /* ฟอร์มค้นหาบนแท็บเล็ต / iPad: 2 คอลัมน์สมมาตร วันที่แถวบน เวลาแถวล่าง ปุ่มเต็มแถว */
   .search-panel {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 12px;
   }
-  .search-panel .input-group:first-child { grid-column: 1 / -1; }
   .search-actions { grid-column: 1 / -1; width: 100%; }
-  .search-actions button { width: 100%; justify-content: center; min-height: 44px; }
+  .search-actions button { width: 100%; justify-content: center; min-height: 46px; font-size: 15px; }
 }
 
 /* --- 13.3 แท็บเล็ตขนาดเล็ก / iPad mini (≤ 850px) --- */
@@ -1862,11 +1894,44 @@ tbody tr:last-child td {
   .chart-wrapper { height: 250px; }
 
   /* ฟอร์มค้นหา */
-  .search-panel { padding: 12px; gap: 10px; }
-  .input-group label { font-size: 12.5px; }
-  .input-group input { font-size: 16px; min-height: 44px; border-radius: 10px; }
-  .time-select { min-height: 44px; border-radius: 10px; padding: 0 8px; }
-  .time-select select { font-size: 16px; padding: 8px 2px; }
+  .search-panel {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    padding: 12px;
+    gap: 10px;
+  }
+  .search-actions {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+  .search-actions button {
+    width: 100%;
+    min-height: 46px;
+    font-size: 15px;
+    border-radius: 12px;
+  }
+  .quick-ranges {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    padding: 2px 0 6px;
+    gap: 6px;
+    scrollbar-width: none;
+  }
+  .quick-ranges::-webkit-scrollbar {
+    display: none;
+  }
+  .quick-ranges .btn-sm {
+    flex-shrink: 0;
+    padding: 6px 11px;
+    font-size: 12px;
+  }
+  .input-group label { font-size: 12px; }
+  .input-group input { font-size: 15px; min-height: 44px; border-radius: 10px; padding: 8px 10px; }
+  .time-select { min-height: 44px; border-radius: 10px; padding: 0 6px; }
+  .time-select select { font-size: 15px; padding: 8px 1px; }
   .range-hint { font-size: 12px; }
 
   /* KPI Summary 3 ช่อง */
@@ -1950,3 +2015,557 @@ tbody tr:last-child td {
 
 /* ===== บอร์ดออฟไลน์: หรี่ตัวเลขการ์ดให้รู้ว่าเป็นค่าเก่า ===== */
 body.board-offline .card h2 { opacity: .45; }
+
+/* ==========================================================================
+   ===== 14. SMART AGRICULTURE & LIVESTOCK ADVISORY =====
+   ========================================================================== */
+.agri-hero-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-lg);
+  padding: 22px;
+  margin-bottom: 20px;
+}
+
+.mode-switch-pill {
+  display: inline-flex;
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--border-card);
+  border-radius: 30px;
+  padding: 3px;
+  gap: 4px;
+}
+[data-theme="light"] .mode-switch-pill {
+  background: #e2e8f0;
+}
+.mode-btn {
+  background: transparent;
+  border: none;
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.mode-btn.active {
+  background: var(--primary-color);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.35);
+}
+[data-theme="dark"] .mode-btn.active {
+  background: linear-gradient(135deg, #0284c7, #38bdf8);
+  color: #041325;
+  font-weight: 700;
+}
+
+.agri-env-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin: 18px 0;
+}
+
+.agri-env-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-card);
+  border-radius: 16px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+  overflow: hidden;
+}
+[data-theme="light"] .agri-env-card {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.agri-card-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.source-mini-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.agri-env-val {
+  font-size: 34px;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.agri-env-val .unit {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* Slider Controls */
+.sim-slider-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+.sim-slider-wrap input[type="range"] {
+  width: 100%;
+  accent-color: var(--primary-color);
+  cursor: pointer;
+  height: 6px;
+  border-radius: 3px;
+}
+.slider-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+
+/* THI Meter */
+.thi-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+.thi-normal { background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
+.thi-mild { background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); }
+.thi-moderate { background: rgba(249, 115, 22, 0.15); color: #f97316; border: 1px solid rgba(249, 115, 22, 0.3); }
+.thi-severe { background: rgba(239, 68, 68, 0.18); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.35); }
+
+.thi-meter {
+  width: 100%;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 6px 0 4px;
+}
+[data-theme="light"] .thi-meter {
+  background: #e2e8f0;
+}
+.thi-meter-bar {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #10b981 0%, #f59e0b 50%, #ef4444 100%);
+  transition: width 0.3s ease;
+}
+.thi-advice {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* Agri Summary Banner */
+.agri-summary-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(6, 182, 212, 0.08));
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 14px;
+  padding: 14px 18px;
+  margin-top: 14px;
+}
+[data-theme="light"] .agri-summary-banner {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+.banner-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.banner-content h4 {
+  margin: 0 0 4px 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #10b981;
+}
+[data-theme="light"] .banner-content h4 {
+  color: #15803d;
+}
+.banner-content p {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+/* Filter Chips Bar */
+.agri-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.filter-chip {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-card);
+  border-radius: 20px;
+  padding: 6px 13px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+[data-theme="light"] .filter-chip {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+.filter-chip.active {
+  background: var(--primary-color);
+  color: #fff;
+  border-color: var(--primary-color);
+}
+[data-theme="dark"] .filter-chip.active {
+  background: linear-gradient(135deg, #0284c7, #38bdf8);
+  color: #041325;
+  font-weight: 700;
+}
+
+/* Agri Recommendation Cards Grid */
+.agri-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.agri-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: 16px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  position: relative;
+  overflow: hidden;
+}
+.agri-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+[data-theme="light"] .agri-card {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+}
+
+.agri-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+.agri-card-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.agri-emoji {
+  font-size: 28px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+[data-theme="light"] .agri-emoji {
+  background: #f1f5f9;
+}
+.agri-card-title h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.agri-card-title span {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+/* Suitability Badges */
+.suit-badge {
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.suit-optimal {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+.suit-warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+.suit-danger {
+  background: rgba(239, 68, 68, 0.18);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.agri-metric-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+[data-theme="light"] .agri-metric-row {
+  background: #f8fafc;
+}
+.agri-metric-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.metric-col-title {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.metric-col-val {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.agri-card-tips {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 10px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--primary-color);
+  margin: 0;
+}
+[data-theme="light"] .agri-card-tips {
+  background: #f8fafc;
+}
+
+/* Responsiveness for Agriculture */
+@media (max-width: 1024px) {
+  .agri-env-grid { grid-template-columns: 1fr 1fr; }
+  .thi-card { grid-column: 1 / -1; }
+  .agri-cards-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 768px) {
+  .agri-filter-bar {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    padding: 2px 0 6px;
+    scrollbar-width: none;
+  }
+  .agri-filter-bar::-webkit-scrollbar { display: none; }
+  .filter-chip { flex-shrink: 0; }
+  .agri-cards-grid { grid-template-columns: 1fr; }
+  .agri-env-grid { grid-template-columns: 1fr; }
+}
+
+/* ==========================================================================
+   14. ระบบลายน้ำและป้องกันการแคปหน้าจอ (Anti-Screenshot & Watermark System)
+   ========================================================================== */
+
+/* ลายน้ำพื้นหลัง (Watermark Background) ถาวรกระจายทั่วทุกหน้าจอ */
+.watermark-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  user-select: none;
+  background-repeat: repeat;
+  background-size: 300px 180px;
+  opacity: 0.85;
+  transition: opacity 0.3s ease, filter 0.3s ease;
+}
+
+/* เมื่อหน้าต่างเบลอ (เช่น มีการกด Win + Shift + S เพื่อแคปภาพ หรือสลับหน้าจอ) */
+body.is-capturing .container {
+  filter: blur(14px) grayscale(40%);
+  pointer-events: none;
+  transition: filter 0.15s ease;
+}
+
+body.is-capturing .watermark-bg {
+  opacity: 1;
+  filter: drop-shadow(0 0 8px rgba(255, 107, 53, 0.4));
+}
+
+/* โล่แจ้งเตือนการแคปภาพหน้าจอ (Anti-Capture Shield Overlay) */
+.anti-capture-shield {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  background: rgba(10, 15, 29, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.2s;
+}
+
+[data-theme="light"] .anti-capture-shield {
+  background: rgba(248, 250, 252, 0.92);
+}
+
+body.is-capturing .anti-capture-shield,
+.anti-capture-shield.active {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.shield-content {
+  text-align: center;
+  padding: 36px 32px;
+  max-width: 480px;
+  background: var(--bg-card);
+  border: 2px solid var(--accent-orange, #ff6b35);
+  border-radius: 24px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(255, 107, 53, 0.3);
+  animation: shieldPulse 1.8s infinite ease-in-out;
+  position: relative;
+  overflow: hidden;
+  margin: 16px;
+}
+
+@keyframes shieldPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5), 0 0 30px rgba(255, 107, 53, 0.25);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5), 0 0 50px rgba(255, 107, 53, 0.45);
+  }
+}
+
+.shield-icon {
+  font-size: 54px;
+  margin-bottom: 12px;
+  line-height: 1;
+}
+
+.shield-title {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  letter-spacing: -0.5px;
+}
+
+.shield-desc {
+  font-size: 14.5px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+
+.shield-watermark-pattern {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-orange, #ff6b35);
+  background: rgba(255, 107, 53, 0.12);
+  border: 1px dashed rgba(255, 107, 53, 0.4);
+  padding: 8px 16px;
+  border-radius: 999px;
+  display: inline-block;
+  letter-spacing: 0.5px;
+}
+
+/* Toast เตือนการแคปหน้าจอ */
+.capture-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: rgba(15, 23, 42, 0.95);
+  color: #fff;
+  border: 1px solid var(--accent-orange, #ff6b35);
+  border-radius: 999px;
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  z-index: 1000000;
+  pointer-events: none;
+  opacity: 0;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.capture-toast.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+
+/* ป้องกันการสั่งพิมพ์หน้าเว็บ (Print / Save to PDF) */
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  body {
+    background: #ffffff !important;
+  }
+  .anti-capture-shield {
+    visibility: visible !important;
+    opacity: 1 !important;
+    display: flex !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .anti-capture-shield * {
+    visibility: visible !important;
+    color: #111827 !important;
+  }
+  .shield-content {
+    border-color: #ef4444 !important;
+  }
+}
+

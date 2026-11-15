@@ -49,20 +49,32 @@ const liveTempMinMax = document.getElementById("liveTempMinMax");
 const liveHumMinMax = document.getElementById("liveHumMinMax");
 const digitalClock = document.getElementById("digitalClock");
 const quickTodayBtn = document.getElementById("quickTodayBtn");
+const quick7DaysBtn = document.getElementById("quick7DaysBtn");
+const quick30DaysBtn = document.getElementById("quick30DaysBtn");
+const quickAllBtn = document.getElementById("quickAllBtn");
 const sourceBadge = document.getElementById("sourceBadge");
 
 const dateInput = document.getElementById("date");
+const endDateInput = document.getElementById("endDate");
 const startInput = document.getElementById("start");
 const endInput = document.getElementById("end");
 
-// ตรวจสอบและแสดงป้ายแจ้งเตือนการเลือกเวลาข้ามวัน/ข้ามคืน (เช่น 20:00 ไป 00:00 หรือ 22:00 ไป 02:00)
+// ตรวจสอบและแสดงป้ายแจ้งเตือนการเลือกเวลาข้ามวันหรือช่วงวันที่หลายวัน
 function updateOvernightIndicator() {
   const tag = document.getElementById("overnightTag");
   if (!tag || !startInput || !endInput) return;
   const s = startInput.value || "";
   const e = endInput.value || "";
   const d = dateInput ? dateInput.value : "";
-  if (s && e && e <= s) {
+  const endD = endDateInput ? endDateInput.value : "";
+
+  if (d && endD && endD > d) {
+    const d1 = new Date(`${d}T12:00:00+07:00`);
+    const d2 = new Date(`${endD}T12:00:00+07:00`);
+    const diffDays = Math.round((d2 - d1) / 86400000) + 1;
+    tag.textContent = `🗓️ ${diffDays} วัน`;
+    tag.style.display = "inline-flex";
+  } else if (s && e && e <= s) {
     if (d) {
       const nextDate = new Date(new Date(`${d}T12:00:00+07:00`).getTime() + 86400000);
       const thShort = nextDate.toLocaleDateString("th-TH", { day: "numeric", month: "short" });
@@ -128,11 +140,28 @@ buildTimeSelect(startInput);
 buildTimeSelect(endInput);
 if (dateInput) {
   dateInput.addEventListener("change", () => {
+    if (endDateInput && (!endDateInput.value || endDateInput.value < dateInput.value)) {
+      endDateInput.value = dateInput.value;
+    }
     if (startInput && !startInput.value) startInput.value = "00:00";
     if (endInput && !endInput.value) endInput.value = "23:59";
     syncTimeSelects();
     updateOvernightIndicator();
     if (dateInput.value) {
+      runSearch(true);
+    }
+  });
+}
+if (endDateInput) {
+  endDateInput.addEventListener("change", () => {
+    if (dateInput && dateInput.value && endDateInput.value < dateInput.value) {
+      dateInput.value = endDateInput.value;
+    }
+    if (startInput && !startInput.value) startInput.value = "00:00";
+    if (endInput && !endInput.value) endInput.value = "23:59";
+    syncTimeSelects();
+    updateOvernightIndicator();
+    if (endDateInput.value) {
       runSearch(true);
     }
   });
@@ -185,10 +214,16 @@ let rangeChart = null;
 let sheetPollTimer = null;
 
 // กำหนดวันที่เริ่มต้นในช่องค้นหาเป็นวันปัจจุบัน (เวลาไทย) และเปิดให้เลือกดูได้อิสระทุกวันทุกเดือนทุกปี
+const initTodayStr = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Bangkok" });
 if (dateInput) {
-  dateInput.value = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Bangkok" });
+  dateInput.value = initTodayStr;
   dateInput.removeAttribute("min");
   dateInput.removeAttribute("max");
+}
+if (endDateInput) {
+  endDateInput.value = initTodayStr;
+  endDateInput.removeAttribute("min");
+  endDateInput.removeAttribute("max");
 }
 if (startInput && !startInput.value) startInput.value = "00:00";
 if (endInput && !endInput.value) endInput.value = "23:59";
@@ -455,8 +490,12 @@ function makeChart(id) {
             color: theme.tickColor, maxTicksLimit: 10, maxRotation: 0, font: { size: 11 },
             callback: function (value) {
               const spanMs = this.max - this.min;
+              if (spanMs > 2.5 * 86400000) {
+                const p = thParts(value);
+                return `${p.day} ${TH_MONTHS[p.m]}`;
+              }
               const t = fmtThTime(value, spanMs < 10 * 60 * 1000);
-              return spanMs > 20 * 3600 * 1000 ? [t, fmtThDate(value)] : t; // ข้ามวัน -> แสดงวันที่ใต้เวลา
+              return spanMs > 18 * 3600 * 1000 ? [t, fmtThDate(value)] : t; // ข้ามวัน -> แสดงวันที่ใต้เวลา
             }
           }
         },
@@ -581,13 +620,16 @@ window.addEventListener("resize", () => {
   });
 });
 
-// แกนเวลา: เลือกระยะห่างขีดเป็นนาทีกลมๆ (5, 10, 15, 30 นาที, 1, 2, 3 ชม. ...) ไม่เกิน ~8 ขีด
+// แกนเวลา: เลือกระยะห่างขีดเป็นนาทีกลมๆ (5, 10, 15, 30 นาที, 1, 2, 3 ชม., 1 วัน, 2 วัน, 7 วัน, 30 วัน ...) ไม่เกิน ~8 ขีด
 // roundEnds = true จะขยายขอบซ้าย/ขวาให้ตรงขีดพอดี (ใช้กับกราฟข้อมูลทั้งหมด/24 ชม.)
 function setTimeAxis(x, minMs, maxMs, roundEnds) {
-  const steps = [1, 2, 5, 10, 15, 30, 60, 120, 180, 240, 360, 720, 1440];
+  const steps = [
+    1, 2, 5, 10, 15, 30, 60, 120, 180, 240, 360, 720, 1440,
+    2880, 4320, 7200, 10080, 20160, 43200
+  ];
   const spanMin = (maxMs - minMs) / 60000;
   const maxTicks = isNarrow() ? 5 : 8; // มือถือแสดงขีดเวลาน้อยลงไม่ให้ทับกัน
-  const stepMin = steps.find((m) => spanMin / m <= maxTicks) || 1440;
+  const stepMin = steps.find((m) => spanMin / m <= maxTicks) || (Math.ceil(spanMin / maxTicks / 1440) * 1440);
   const stepMs = stepMin * 60000;
   const off = 7 * 3600 * 1000; // ให้ขีดตรงเวลาไทย
   if (roundEnds) {
@@ -689,6 +731,9 @@ function applyTheme(theme) {
   }
 
   updateChartsTheme();
+  if (typeof updateWatermark === "function") {
+    updateWatermark(theme);
+  }
 }
 
 function toggleThemeSmoothly() {
@@ -733,8 +778,24 @@ async function fetchFromGoogleSheet(inputUrl, isBackground = false) {
     let rows = [];
 
     if (isWebApp) {
-      // ดึงจาก Apps Script Web App (doGet)
-      const res = await fetch(inputUrl, { redirect: "follow" });
+      // ดึงจาก Backend API (/api/data) หลังบ้านก่อนเพื่อซ่อน URL และเพิ่มประสิทธิภาพ
+      let res = null;
+      try {
+        if (!ADMIN_MODE || !localStorage.getItem("esp32_sheet_url")) {
+          const apiRes = await fetch("/api/data", { cache: "no-store" });
+          if (apiRes.ok) {
+            res = apiRes;
+          }
+        }
+      } catch (backendErr) {
+        // Fallback ไป inputUrl ต่อไปสำหรับ Local Static Server
+      }
+
+      if (!res) {
+        // ดึงจาก Apps Script Web App (doGet) โดยตรงเป็น fallback
+        res = await fetch(inputUrl, { redirect: "follow" });
+      }
+
       const text = await res.text();
       let json = null;
       try {
@@ -1097,6 +1158,8 @@ function updateMetricPills(temp, hum) {
       }
     }
   }
+
+  updateAgriAdvisory(temp, hum);
 }
 
 // คำนวณช่วงต่ำสุด-สูงสุดรอบ 24 ชม. สำหรับการ์ดหลัก
@@ -1138,13 +1201,49 @@ setInterval(checkStatus, 1000);
 // ==========================================================================
 // ===== 6. การค้นหาข้อมูลตามช่วงเวลา =====
 // ==========================================================================
+const toBkkDate = (d) => d.toLocaleDateString("sv-SE", { timeZone: "Asia/Bangkok" });
+
 if (quickTodayBtn) {
   quickTodayBtn.addEventListener("click", () => {
-    if (dateInput) dateInput.value = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Bangkok" });
+    const today = toBkkDate(new Date());
+    if (dateInput) dateInput.value = today;
+    if (endDateInput) endDateInput.value = today;
     if (startInput) startInput.value = "00:00";
     if (endInput) endInput.value = "23:59";
     syncTimeSelects();
-    if (searchBtn) searchBtn.click();
+    runSearch(false);
+  });
+}
+
+if (quick7DaysBtn) {
+  quick7DaysBtn.addEventListener("click", () => {
+    const now = new Date();
+    const past7 = new Date(now.getTime() - 6 * 86400000);
+    if (dateInput) dateInput.value = toBkkDate(past7);
+    if (endDateInput) endDateInput.value = toBkkDate(now);
+    if (startInput) startInput.value = "00:00";
+    if (endInput) endInput.value = "23:59";
+    syncTimeSelects();
+    runSearch(false);
+  });
+}
+
+if (quick30DaysBtn) {
+  quick30DaysBtn.addEventListener("click", () => {
+    const now = new Date();
+    const past30 = new Date(now.getTime() - 29 * 86400000);
+    if (dateInput) dateInput.value = toBkkDate(past30);
+    if (endDateInput) endDateInput.value = toBkkDate(now);
+    if (startInput) startInput.value = "00:00";
+    if (endInput) endInput.value = "23:59";
+    syncTimeSelects();
+    runSearch(false);
+  });
+}
+
+if (quickAllBtn) {
+  quickAllBtn.addEventListener("click", () => {
+    clearSearch();
   });
 }
 
@@ -1154,10 +1253,14 @@ function updateDataRangeHint(rows) {
   const valid = rows.filter((r) => r.ts > 0);
   if (!valid.length) { if (hint) hint.textContent = ""; return; }
   const a = valid[0].ts * 1000, b = valid[valid.length - 1].ts * 1000;
-  // ปลดล็อกขีดจำกัด min/max ของช่องปฏิทิน เพื่อให้เลือกดูได้อิสระทุกวัน ทุกเดือน ทุกปี
+  // ปลดล็อกขีดจำกัด min/max ของช่องปฏิทินทั้งสองช่อง เพื่อให้เลือกดูได้อิสระทุกวัน ทุกเดือน ทุกปี
   if (dateInput) {
     dateInput.removeAttribute("min");
     dateInput.removeAttribute("max");
+  }
+  if (endDateInput) {
+    endDateInput.removeAttribute("min");
+    endDateInput.removeAttribute("max");
   }
   if (hint) {
     hint.innerHTML = `📦 มีข้อมูลตั้งแต่ <strong>${fmtThDate(a)} ${fmtThTime(a)} น.</strong> ถึง <strong>${fmtThDate(b)} ${fmtThTime(b)} น.</strong> (${valid.length} จุด)` +
@@ -1170,6 +1273,19 @@ function updateDataRangeHint(rows) {
 function clearSearch() {
   activeSearch = null;
   const rows = isDemoMode ? demoRows : currentRows;
+  if (rows && rows.length) {
+    const valid = rows.filter((r) => r.ts > 0);
+    if (valid.length) {
+      const a = valid[0].ts * 1000;
+      const b = valid[valid.length - 1].ts * 1000;
+      const toISO = (ms) => new Date(ms + 7 * 3600 * 1000).toISOString().slice(0, 10);
+      if (dateInput) dateInput.value = toISO(a);
+      if (endDateInput) endDateInput.value = toISO(b);
+      if (startInput) startInput.value = "00:00";
+      if (endInput) endInput.value = "23:59";
+      syncTimeSelects();
+    }
+  }
   updateChart(rangeChart, rows, { title: rangeTitle(rows, "ข้อมูลทั้งหมด: ") });
   renderTable(rows);
   renderSummary(rows);
@@ -1180,11 +1296,17 @@ function clearSearch() {
 // silent = true: เรียกจากการรีเฟรชอัตโนมัติหรือเปลี่ยนวันที่ (ไม่แสดง alert)
 async function runSearch(silent = false) {
   const d = dateInput ? dateInput.value : "";
+  let endD = endDateInput ? endDateInput.value : "";
+  if (!endD && d) {
+    endD = d;
+    if (endDateInput) endDateInput.value = d;
+  }
   let s = startInput ? startInput.value : "";
   let e = endInput ? endInput.value : "";
   const warn = (msg) => { if (!silent) alert(msg); };
 
-  if (!d) { warn("กรุณาเลือกวันที่ที่ต้องการค้นหา"); return; }
+  if (!d) { warn("กรุณาเลือกวันที่เริ่มต้นที่ต้องการค้นหา"); return; }
+  if (!endD) endD = d;
 
   // หากเว้นว่างเวลาเริ่มต้นหรือสิ้นสุด ให้ใช้ค่าครอบคลุมทั้งวัน 00:00 - 23:59 โดยอัตโนมัติ
   if (!s) {
@@ -1201,25 +1323,30 @@ async function runSearch(silent = false) {
   if (isNaN(startDateObj.getTime())) { warn("รูปแบบวันที่หรือเวลาเริ่มต้นไม่ถูกต้อง"); return; }
   const startTs = Math.floor(startDateObj.getTime() / 1000);
 
-  // ตรวจสอบการเลือกเวลาข้ามวัน/ข้ามคืน
-  // เช่น เริ่ม 20:00 หรือ 22:00 ถึง 00:00 (เที่ยงคืน) หรือถึง 02:00 (ตีสองของวันรุ่งขึ้น)
-  const isOvernight = (e <= s);
-  let endDateStr = d;
-  if (isOvernight) {
+  // รองรับการเลือกเวลาข้ามเที่ยงคืนหากเลือกวันเดียวกัน
+  let finalEndD = endD;
+  const isOvernightTime = (d === endD && e <= s);
+  if (isOvernightTime) {
     const nextDate = new Date(startDateObj.getTime() + 24 * 60 * 60 * 1000);
-    endDateStr = nextDate.toLocaleDateString("sv-SE", { timeZone: "Asia/Bangkok" });
+    finalEndD = nextDate.toLocaleDateString("sv-SE", { timeZone: "Asia/Bangkok" });
   }
 
-  const endDateObj = new Date(`${endDateStr}T${e}:59+07:00`);
-  if (isNaN(endDateObj.getTime())) { warn("รูปแบบเวลาสิ้นสุดไม่ถูกต้อง"); return; }
+  const endDateObj = new Date(`${finalEndD}T${e}:59+07:00`);
+  if (isNaN(endDateObj.getTime())) { warn("รูปแบบวันที่หรือเวลาสิ้นสุดไม่ถูกต้อง"); return; }
   const endTs = Math.floor(endDateObj.getTime() / 1000);
 
-  if (endTs < startTs) { warn("เวลาสิ้นสุดต้องหลังเวลาเริ่มต้น"); return; }
+  if (endTs < startTs) {
+    warn("วันและเวลาสิ้นสุดต้องอยู่หลังวันและเวลาเริ่มต้น");
+    return;
+  }
 
-  activeSearch = { d, s, e, isOvernight, endD: endDateStr };
-  const label = isOvernight
-    ? `${fmtThDate(startTs * 1000)} ${s} น. – ${fmtThDate(endTs * 1000)} ${e} น. (ข้ามวัน)`
-    : `${fmtThDate(startTs * 1000)} · ${s} – ${e} น.`;
+  activeSearch = { d, endD: finalEndD, s, e, isOvernightTime };
+  const label = (d === finalEndD)
+    ? (isOvernightTime
+        ? `${fmtThDate(startTs * 1000)} ${s} น. – ${fmtThDate(endTs * 1000)} ${e} น. (ข้ามวัน)`
+        : `${fmtThDate(startTs * 1000)} · ${s} – ${e} น.`)
+    : `${fmtThDate(startTs * 1000)} ${s} น. – ${fmtThDate(endTs * 1000)} ${e} น.`;
+
   const range = { xMin: startTs * 1000, xMax: endTs * 1000 };
 
   let rows = [];
@@ -1711,6 +1838,8 @@ function openModal() {
       configInput.value = currentFb ? JSON.stringify(JSON.parse(currentFb), null, 2) : "";
     }
   }
+
+  updateAgriAdvisory(temp, hum);
 }
 
 function closeModal() {
@@ -1844,10 +1973,18 @@ function showLive(r) {
 }
 
 function fetchLiveOnce() {
-  fetch(LIVE_URL + "?t=" + Date.now(), { cache: "no-store" })
-    .then((res) => res.json())
+  fetch("/api/live?t=" + Date.now(), { cache: "no-store" })
+    .then((res) => {
+      if (res.ok) return res.json();
+      return fetch(LIVE_URL + "?t=" + Date.now(), { cache: "no-store" }).then((r) => r.json());
+    })
     .then(showLive)
-    .catch(() => {});
+    .catch(() => {
+      fetch(LIVE_URL + "?t=" + Date.now(), { cache: "no-store" })
+        .then((res) => res.json())
+        .then(showLive)
+        .catch(() => {});
+    });
 }
 
 function startLiveStream() {
@@ -1868,22 +2005,623 @@ function startLiveStream() {
 startLiveStream();
 
 // ==========================================================================
-// ===== 10. ระบบสลับหน้าระหว่างภาพรวมและวิเคราะห์แบบลื่นไหลไร้รอยต่อ (SPA Navigation) =====
+// ===== 10. ระบบคำแนะนำภาคการเกษตรและการปศุสัตว์ (Smart Agriculture & Livestock) =====
+// ==========================================================================
+let currentAgriLiveTemp = 28;
+let currentAgriLiveHum = 65;
+let isAgriSimMode = false;
+let simTemp = 28;
+let simHum = 65;
+let currentAnimalFilter = "all";
+let currentCropFilter = "all";
+
+const AGRI_ANIMALS = [
+  {
+    id: "broiler",
+    name: "ไก่เนื้อ (Broiler)",
+    category: "poultry",
+    emoji: "🐔",
+    optimalTemp: [20, 26],
+    limitTemp: [16, 32],
+    optimalHum: [50, 70],
+    limitHum: [40, 80],
+    goodAdvice: "อุณหภูมิและความชื้นเหมาะสมมาก ไก่เติบโตเร็ว อัตราการแลกเนื้อ (FCR) ดีเยี่ยม ไม่มีความเครียด",
+    warnAdvice: "อุณหภูมิเริ่มสูงหรือชื้นไป ไก่เริ่มอ้าปากระบายความร้อน ควรเปิดพัดลมอุโมงค์ลมและเสริมวิตามินซีในน้ำดื่ม",
+    dangerAdvice: "เสี่ยงตายจากฮีทสโตรก! ไก่หยุดกินอาหาร หายใจหอบรุนแรง ต้องเปิดม่านน้ำ Evap พ่นละอองหลังคาและเปิดพัดลมเต็มกำลังทันที"
+  },
+  {
+    id: "layer",
+    name: "ไก่ไข่ (Layer Hen)",
+    category: "poultry",
+    emoji: "🥚",
+    optimalTemp: [18, 25],
+    limitTemp: [15, 30],
+    optimalHum: [50, 70],
+    limitHum: [40, 80],
+    goodAdvice: "อุณหภูมิสบายมาก อัตราการไข่สม่ำเสมอ เปลือกไข่หนาแข็งแรง ฟองใหญ่สมบูรณ์",
+    warnAdvice: "เริ่มร้อนขึ้น ปริมาณการไข่และขนาดไข่อาจลดลง 5-10% ควรให้อาหารช่วงเช้าตรู่หรือช่วงค่ำที่อากาศเย็น",
+    dangerAdvice: "ความร้อนวิกฤต! ไก่เครียดหนัก เปลือกไข่บางแตกง่าย อัตราการไข่ตกฮวบ ต้องลดความร้อนในโรงเรือนด่วน"
+  },
+  {
+    id: "duck",
+    name: "เป็ดเนื้อ / เป็ดไข่ (Duck)",
+    category: "poultry",
+    emoji: "🦆",
+    optimalTemp: [18, 28],
+    limitTemp: [15, 34],
+    optimalHum: [55, 80],
+    limitHum: [45, 90],
+    goodAdvice: "เป็ดปรับตัวได้ดีมาก ร่าเริง กินอาหารได้ตามเกณฑ์ ผลผลิตไข่สม่ำเสมอ",
+    warnAdvice: "อากาศร้อนอบอ้าว ควรมีบ่อน้ำสะอาดให้เป็ดลงเล่นน้ำคลายร้อนและเปลี่ยนถ่ายน้ำบ่อยๆ",
+    dangerAdvice: "อากาศร้อนจัดและชื้นสูง ระวังโรคทางเดินหายใจและสารพิษจากเชื้อราในอาหาร"
+  },
+  {
+    id: "swine",
+    name: "สุกรขุน / สุกรพันธุ์ (Swine)",
+    category: "swine",
+    emoji: "🐷",
+    optimalTemp: [18, 25],
+    limitTemp: [15, 30],
+    optimalHum: [50, 75],
+    limitHum: [40, 85],
+    goodAdvice: "สภาพอากาศสมบูรณ์แบบ หมูกินอาหารได้เต็มที่ โตเร็ว อัตราการสะสมเนื้อแดงดีเยี่ยม",
+    warnAdvice: "สุกรไม่มีต่อมเหงื่อ อุณหภูมิเกิน 27°C จะเริ่มหอบและกินอาหารลดลง ควรเปิดระบบพ่นน้ำหยดบนสันคอหรือพัดลม",
+    dangerAdvice: "อันตรายจากภาวะ Heat Stroke ในสุกร เสี่ยงหัวใจล้มเหลวเฉียบพลัน ต้องเปิดสปริงเกลอร์และระบายอากาศเร่งด่วน"
+  },
+  {
+    id: "piglet",
+    name: "ลูกสุกรอนุบาล (Piglet)",
+    category: "swine",
+    emoji: "🐽",
+    optimalTemp: [28, 33],
+    limitTemp: [24, 35],
+    optimalHum: [50, 70],
+    limitHum: [40, 80],
+    goodAdvice: "อบอุ่นสบาย ลูกสุกรแข็งแรง ไม่ท้องเสีย ภูมิคุ้มกันทำงานได้เต็มที่",
+    warnAdvice: "อุณหภูมิต่ำหรือสูงเกินช่วงที่ลูกสุกรต้องการ ต้องระวังลมโกรกและควบคุมกกไฟให้อบอุ่น",
+    dangerAdvice: "อากาศหนาวเย็นหรือชื้นแฉะเกินไป ลูกสุกรจะนอนสุมกัน ท้องเสีย และเสี่ยงปอดบวม"
+  },
+  {
+    id: "dairy",
+    name: "โคนม (Dairy Cattle)",
+    category: "cattle",
+    emoji: "🥛",
+    optimalTemp: [15, 24],
+    limitTemp: [10, 27],
+    optimalHum: [50, 75],
+    limitHum: [40, 85],
+    goodAdvice: "อากาศเย็นสบาย โคนมกินหญ้าดี เคี้ยวเอื้องสม่ำเสมอ ผลผลิตน้ำนมได้มาตรฐานสูงสุด",
+    warnAdvice: "เริ่มเกิดความเครียดจากความร้อน (THI > 72) น้ำนมจะลดลง 10-20% ควรเปิดพัดลมกวนอากาศและพ่นน้ำ cooling",
+    dangerAdvice: "Heat Stress รุนแรง! โคนมหอบลิ้นห้อย น้ำนมลดฮวบและไม่ยอมผสมพันธุ์ ต้องพ่นน้ำระบายความร้อนบนสันหลังตลอดช่วงแดดจัด"
+  },
+  {
+    id: "beef",
+    name: "โคเนื้อ / กระบือ (Beef & Buffalo)",
+    category: "cattle",
+    emoji: "🐄",
+    optimalTemp: [20, 30],
+    limitTemp: [15, 36],
+    optimalHum: [50, 80],
+    limitHum: [35, 90],
+    goodAdvice: "ทนทานและปรับตัวได้ดีมาก กินหญ้าได้ปกติ อัตราการเจริญเติบโตสม่ำเสมอ",
+    warnAdvice: "แดดจัดช่วงเที่ยง-บ่าย ควรมีร่มเงาต้นไม้หรือหลังคาโรงเรือนสูงโปร่ง และน้ำสะอาดให้ดื่มไม่อั้น",
+    dangerAdvice: "อากาศร้อนจัดต่อเนื่อง ให้ระวังพาหะนำโรคแมลงดูดเลือด และควรมีปลักโคลนหรือบ่อน้ำให้กระบือแช่ตัว"
+  },
+  {
+    id: "goat",
+    name: "แพะ / แกะ (Goat & Sheep)",
+    category: "cattle",
+    emoji: "🐐",
+    optimalTemp: [20, 30],
+    limitTemp: [16, 35],
+    optimalHum: [50, 75],
+    limitHum: [40, 85],
+    goodAdvice: "แพะชอบอากาศโปร่งแห้ง ไม่ชื้นแฉะ เติบโตดีและมีสุขภาพกีบแข็งแรง",
+    warnAdvice: "ระวังเรื่องความชื้นสะสมในคอก ควรเป็นคอกยกพื้นและทำความสะอาดมูลสม่ำเสมอ",
+    dangerAdvice: "ความชื้นสูงและอากาศอบอ้าว เสี่ยงโรคพยาธิทางเดินอาหาร กีบเน่า และโรคปอดบวมในลูกแพะ"
+  },
+  {
+    id: "tilapia",
+    name: "ปลานิล / ปลาดุก (Tilapia & Catfish)",
+    category: "aqua",
+    emoji: "🐟",
+    optimalTemp: [25, 32],
+    limitTemp: [20, 35],
+    optimalHum: [40, 95],
+    limitHum: [30, 100],
+    goodAdvice: "อุณหภูมิกระตุ้นการเผาผลาญและการกินอาหารของปลาได้ดี โตไว เนื้อแน่น",
+    warnAdvice: "อากาศร้อนจัดจะทำให้ออกซิเจนละลายในน้ำลดลง ควรเปิดกังหันตีน้ำช่วงบ่ายและเช้ามืด",
+    dangerAdvice: "อุณหภูมิน้ำอาจสูงเกินเกณฑ์ เสี่ยงปลาลอยหัวขาดออกซิเจน ควรเติมน้ำใหม่ลึก 1.5 ม. และงดให้อาหารมื้อบ่าย"
+  },
+  {
+    id: "shrimp",
+    name: "กุ้งขาว / กุ้งก้ามกราม (Shrimp)",
+    category: "aqua",
+    emoji: "🦐",
+    optimalTemp: [26, 31],
+    limitTemp: [22, 33],
+    optimalHum: [50, 95],
+    limitHum: [35, 100],
+    goodAdvice: "ลอกคราบได้ดี ลำตัวใส แข็งแรง กินอาหารหมดตามเวลาที่กำหนด",
+    warnAdvice: "หากอุณหภูมิน้ำแกว่งเกิน 3°C ในรอบวัน กุ้งจะเครียด ควรควบคุมการให้อาหารไม่ให้เหลือตกค้าง",
+    dangerAdvice: "เสี่ยงการติดเชื้อแบคทีเรียและโรคตับวายเฉียบพลัน (EMS) หากอุณหภูมิน้ำสูงเกิน 32°C ติดต่อกัน"
+  },
+  {
+    id: "cricket",
+    name: "จิ้งหรีด / สะดิ้ง (Cricket)",
+    category: "insect",
+    emoji: "🦗",
+    optimalTemp: [28, 34],
+    limitTemp: [24, 37],
+    optimalHum: [50, 65],
+    limitHum: [40, 75],
+    goodAdvice: "ชอบอากาศอบอุ่น-ร้อน ขยันกินอาหาร โตไว รอบการเก็บเกี่ยวสั้นลง",
+    warnAdvice: "หากความชื้นสูงเกินไป แผงไข่จะขึ้นราและจิ้งหรีดเป็นโรคท้องร่วง ควรเปิดระบายอากาศให้แห้ง",
+    dangerAdvice: "อากาศเย็นจัดหรือชื้นแฉะ จิ้งหรีดจะไม่ยอมกินอาหาร เคลื่อนไหวช้า และเสี่ยงตายยกบ่อ"
+  },
+  {
+    id: "bee",
+    name: "ชันโรง / ผึ้งพันธุ์ (Stingless Bee)",
+    category: "insect",
+    emoji: "🐝",
+    optimalTemp: [25, 35],
+    limitTemp: [20, 38],
+    optimalHum: [55, 75],
+    limitHum: [40, 85],
+    goodAdvice: "ออกหากินเกสรดอกไม้ขยันขันแข็ง ผลิตน้ำผึ้งและขี้ชันได้ปริมาณสูง",
+    warnAdvice: "แดดจัดช่วงเที่ยงควรวางกล่องรังใต้ร่มเงาต้นไม้ ป้องกันรังร้อนจนไข่ฝ่อ",
+    dangerAdvice: "ฝนตกชุกความชื้นสูงจัด ผึ้งจะบินออกหากินไม่ได้ เสี่ยงมดและศัตรูเข้าทำลายรัง"
+  }
+];
+
+const AGRI_CROPS = [
+  {
+    id: "salad",
+    name: "ผักสลัดไฮโดรโปนิกส์ (Green Oak, Cos)",
+    category: "salad",
+    emoji: "🥬",
+    optimalTemp: [20, 27],
+    limitTemp: [16, 32],
+    optimalHum: [60, 75],
+    limitHum: [45, 85],
+    goodAdvice: "ใบกรอบ สีสด ไม่ขม การดูดซึมธาตุอาหารในสารละลายสมบูรณ์แบบ",
+    warnAdvice: "อุณหภูมิเริ่มสูง (>28°C) น้ำในรางปลูกจะร้อน เสี่ยงรากเน่าและผักยืด ควรพรางสแลน 50% และพ่นหมอกเหนือหลังคา",
+    dangerAdvice: "น้ำในระบบร้อนจัด (>32°C) ขาดออกซิเจน ผักจะใบไหม้ ยางขม รากเน่าดำ ต้องเพิ่มอ็อกซิเจนและหล่อน้ำเย็น"
+  },
+  {
+    id: "kale",
+    name: "ผักเคล / ผักกาดใบเขียว (Kale)",
+    category: "salad",
+    emoji: "🥗",
+    optimalTemp: [18, 26],
+    limitTemp: [15, 30],
+    optimalHum: [60, 75],
+    limitHum: [45, 85],
+    goodAdvice: "ใบหยิกสวยงาม กรอบ ก้านไม่เหนียว สารอาหารสะสมได้เต็มที่",
+    warnAdvice: "อากาศร้อนจัดจะทำให้ใบเหนียวและมีรสขม ควรให้น้ำสปริงเกลอร์ช่วงสายเพื่อลดอุณหภูมิรอบใบ",
+    dangerAdvice: "ร้อนแห้งเกินไป ระวังเพลี้ยไฟ ไรแดง และหนอนใยผักระบาดรวดเร็ว"
+  },
+  {
+    id: "chili",
+    name: "พริกขี้หนู / พริกจินดา (Chili)",
+    category: "veggie",
+    emoji: "🌶️",
+    optimalTemp: [25, 35],
+    limitTemp: [20, 38],
+    optimalHum: [60, 80],
+    limitHum: [45, 90],
+    goodAdvice: "พืชชอบอากาศอุ่น ติดดอกออกผลดก เมล็ดเผ็ดจัด สีผิวเงางาม",
+    warnAdvice: "หากความชื้นสูงเกิน 80% ต่อเนื่องหลายวัน ระวังโรคแอนแทรคโนส (กุ้งแห้ง) และโรครากเน่า",
+    dangerAdvice: "อุณหภูมิหนาวเกินไป (<18°C) การเจริญเติบโตจะชะงัก ดอกร่วง ไม่ยอมติดผล"
+  },
+  {
+    id: "basil",
+    name: "กะเพรา / โหระพา (Thai Basil)",
+    category: "veggie",
+    emoji: "🌿",
+    optimalTemp: [25, 35],
+    limitTemp: [18, 38],
+    optimalHum: [60, 80],
+    limitHum: [40, 90],
+    goodAdvice: "เจริญเติบโตเร็วมาก กลิ่นน้ำมันหอมระเหยเข้มข้น แตกยอดดก",
+    warnAdvice: "ชอบแดดเต็มวัน ควรรดน้ำเช้า-เย็นสม่ำเสมอ แต่อย่าให้น้ำขังแฉะ",
+    dangerAdvice: "ความชื้นสูงและใบเปียกชื้นข้ามคืน เสี่ยงโรคใบจุดและราสนิมขาวระบาด"
+  },
+  {
+    id: "tomato",
+    name: "มะเขือเทศ (Tomato)",
+    category: "veggie",
+    emoji: "🍅",
+    optimalTemp: [20, 28],
+    limitTemp: [18, 32],
+    optimalHum: [50, 70],
+    limitHum: [40, 85],
+    goodAdvice: "ละอองเกสรสมบูรณ์ ติดผลดก ผิวตึง สีแดงสด รสชาติหวานอมเปรี้ยวกลมกล่อม",
+    warnAdvice: "หากอุณหภูมิกลางวันเกิน 32°C เกสรตัวผู้จะฝ่อ การติดผลจะลดลง แนะนำพรางแสง 40%",
+    dangerAdvice: "อุณหภูมิสูงร่วมกับความชื้นสูง เสี่ยงโรคใบไหม้ (Late Blight) และผลแตกเสียหาย"
+  },
+  {
+    id: "cucumber",
+    name: "แตงกวา / แตงร้าน (Cucumber)",
+    category: "veggie",
+    emoji: "🥒",
+    optimalTemp: [24, 32],
+    limitTemp: [20, 35],
+    optimalHum: [65, 80],
+    limitHum: [50, 90],
+    goodAdvice: "เถาเลื้อยไว ออกดอกทั้งต้น ผลตรง กรอบ ไม่คอดกิ่ว",
+    warnAdvice: "ระวังโรคราแป้งหากความชื้นสูงและอากาศไม่ถ่ายเท ควรตัดแต่งใบแก่ออก",
+    dangerAdvice: "อากาศแห้งแล้งความชื้นต่ำเกินไป ผลจะแคระแกร็นและมีรสขม"
+  },
+  {
+    id: "melon",
+    name: "เมล่อนญี่ปุ่น (Melon)",
+    category: "fruit",
+    emoji: "🍈",
+    optimalTemp: [25, 33],
+    limitTemp: [20, 36],
+    optimalHum: [50, 65],
+    limitHum: [40, 75],
+    goodAdvice: "อากาศอุ่นและแดดดีมาก การสร้างลวดลายตาข่ายสวยงาม และการสะสมน้ำตาล (Brix) สูง",
+    warnAdvice: "ช่วงทำความหวานก่อนเก็บเกี่ยว 14 วัน ควรคุมความชื้นไม่เกิน 60% ป้องกันผลแตกและรักษาความหวาน",
+    dangerAdvice: "ความชื้นสูงเกิน 75% เสี่ยงโรคราน้ำค้าง โรคใบด่าง และผลแตกเน่าก่อนสุก"
+  },
+  {
+    id: "strawberry",
+    name: "สตรอว์เบอร์รี (Strawberry)",
+    category: "fruit",
+    emoji: "🍓",
+    optimalTemp: [16, 24],
+    limitTemp: [12, 28],
+    optimalHum: [60, 75],
+    limitHum: [45, 85],
+    goodAdvice: "อากาศเย็นเหมาะสมกับการตาดอก ผลหวานฉ่ำ สีแดงสม่ำเสมอ",
+    warnAdvice: "หากอุณหภูมิเกิน 26°C จะออกดอกน้อยลง ควรปลูกในโรงเรือนพ่นหมอกลดอุณหภูมิ",
+    dangerAdvice: "อากาศร้อนจัด (>28°C) ต้นจะบ้าใบ ไม่ออกดอก หรือผลเล็กเปรี้ยวจัด"
+  },
+  {
+    id: "durian",
+    name: "ทุเรียน (Durian Tree / Seedling)",
+    category: "fruit",
+    emoji: "🌳",
+    optimalTemp: [25, 32],
+    limitTemp: [22, 35],
+    optimalHum: [70, 85],
+    limitHum: [55, 95],
+    goodAdvice: "ร้อนชื้นแบบป่าดิบชื้น ใบเงางาม แตกยอดอ่อนสมบูรณ์ การขยายผลดีเยี่ยม",
+    warnAdvice: "หากความชื้นต่ำกว่า 60% ในช่วงออกดอก ดอกจะแห้งร่วง ควรเปิดสปริงเกลอร์ให้น้ำใต้ทรงพุ่ม",
+    dangerAdvice: "อากาศแล้ง ลมแรง ความชื้นต่ำจัด ทุเรียนจะทิ้งใบและผลร่วงเสียหายหนัก"
+  },
+  {
+    id: "mushroom",
+    name: "เห็ดนางฟ้า / เห็ดภูฐาน (Oyster Mushroom)",
+    category: "mushroom",
+    emoji: "🍄",
+    optimalTemp: [24, 30],
+    limitTemp: [20, 33],
+    optimalHum: [75, 85],
+    limitHum: [65, 95],
+    goodAdvice: "ความชื้นและอุณหภูมิสัมพันธ์กันดีมาก ดอกเห็ดหนา ก้านอวบ ออกดอกเต็มหน้าก้อน",
+    warnAdvice: "ความชื้นในโรงเรือนเริ่มต่ำกว่า 75% ควรฉีดพ่นละอองน้ำที่พื้นและผนังโรงเรือนวันละ 3-4 รอบ",
+    dangerAdvice: "อากาศแห้งจัด ดอกเห็ดจะเหี่ยวแห้ง ขอบหมวกแตก หรือเส้นใยฝ่อไม่ยอมแทงตาดอก"
+  },
+  {
+    id: "straw_mushroom",
+    name: "เห็ดฟาง (Straw Mushroom)",
+    category: "mushroom",
+    emoji: "🌰",
+    optimalTemp: [30, 37],
+    limitTemp: [28, 40],
+    optimalHum: [75, 85],
+    limitHum: [65, 95],
+    goodAdvice: "ชอบอากาศร้อนชื้น เส้นใยเดินเร็วมาก ดอกตูมโตไว ได้น้ำหนักดี",
+    warnAdvice: "ระวังอากาศเย็นต่ำกว่า 28°C จะทำให้เส้นใยหยุดชะงัก ควรคลุมพลาสติกอบความร้อน",
+    dangerAdvice: "ความชื้นต่ำ ดอกเห็ดจะแห้งด้าน หรือหากน้ำท่วมขังหน้าก้อน ดอกเห็ดจะเน่าเป็นเมือก"
+  },
+  {
+    id: "lingzhi",
+    name: "เห็ดหลินจือ (Lingzhi Mushroom)",
+    category: "mushroom",
+    emoji: "🪵",
+    optimalTemp: [26, 32],
+    limitTemp: [22, 35],
+    optimalHum: [70, 85],
+    limitHum: [60, 90],
+    goodAdvice: "หมวกเห็ดเจริญเติบโตสมบูรณ์ สปอร์หนา สีน้ำตาลแดงมันวาว สรรพคุณทางยาสูง",
+    warnAdvice: "ต้องการอากาศถ่ายเทดีและแสงสว่างรำไร คุมความชื้นอย่าให้แห้งผาก",
+    dangerAdvice: "โรงเรือนทึบและแฉะเกินไป เสี่ยงราเขียวและแมลงหวี่เข้าทำลายก้อนเชื้อ"
+  }
+];
+
+// คำนวณ Temperature Humidity Index (THI) สำหรับปศุสัตว์
+function calculateTHI(temp, hum) {
+  return 0.8 * temp + (hum / 100) * (temp - 14.4) + 46.4;
+}
+
+function getTHIStatus(thi) {
+  if (thi < 72) {
+    return {
+      level: "ปกติ (Comfort)",
+      badgeClass: "thi-normal",
+      percent: Math.min(100, Math.max(5, ((thi - 60) / 35) * 100)),
+      advice: "สัตว์เลี้ยงอยู่ในสภาวะสบายที่สุด ไม่มีความเครียดจากความร้อน กินอาหารได้ดี ผลผลิตสูงสุด"
+    };
+  } else if (thi < 79) {
+    return {
+      level: "เฝ้าระวัง (Mild Stress)",
+      badgeClass: "thi-mild",
+      percent: Math.min(100, Math.max(5, ((thi - 60) / 35) * 100)),
+      advice: "สัตว์เริ่มมีความเครียดเล็กน้อย อัตราการกินอาหารลดลงเล็กน้อย ควรเปิดพัดลมระบายอากาศ"
+    };
+  } else if (thi < 89) {
+    return {
+      level: "เครียดปานกลาง (Moderate)",
+      badgeClass: "thi-moderate",
+      percent: Math.min(100, Math.max(5, ((thi - 60) / 35) * 100)),
+      advice: "สัตว์เริ่มหายใจหอบ ผลผลิตน้ำนม/การออกไข่ลดลงอย่างชัดเจน ต้องเปิดม่านน้ำ Evap หรือพ่นละอองน้ำ cooling"
+    };
+  } else {
+    return {
+      level: "อันตรายสูง (Severe Stress)",
+      badgeClass: "thi-severe",
+      percent: 100,
+      advice: "สภาวะฉุกเฉิน! สัตว์เสี่ยงตายจากภาวะฮีทสโตรก ต้องใช้น้ำเย็นสปริงเกลอร์พ่นตัวและระบายอากาศเร่งด่วน"
+    };
+  }
+}
+
+function evaluateSuitability(item, temp, hum) {
+  const inTempOptimal = temp >= item.optimalTemp[0] && temp <= item.optimalTemp[1];
+  const inHumOptimal = hum >= item.optimalHum[0] && hum <= item.optimalHum[1];
+
+  const inTempLimit = temp >= item.limitTemp[0] && temp <= item.limitTemp[1];
+  const inHumLimit = hum >= item.limitHum[0] && hum <= item.limitHum[1];
+
+  if (inTempOptimal && inHumOptimal) {
+    return {
+      score: 100,
+      badge: "เหมาะสมดีเยี่ยม ✅",
+      badgeClass: "suit-optimal",
+      advice: item.goodAdvice
+    };
+  } else if (inTempLimit && inHumLimit) {
+    return {
+      score: 65,
+      badge: "ควรเฝ้าระวัง ⚠️",
+      badgeClass: "suit-warning",
+      advice: item.warnAdvice
+    };
+  } else {
+    return {
+      score: 25,
+      badge: "ไม่เหมาะสม / เฝ้าระวังพิเศษ 🚨",
+      badgeClass: "suit-danger",
+      advice: item.dangerAdvice
+    };
+  }
+}
+
+function renderAgriCards(temp, hum) {
+  const animalGrid = document.getElementById("animalCardsGrid");
+  const cropGrid = document.getElementById("cropCardsGrid");
+  if (!animalGrid || !cropGrid) return;
+
+  // คำนวณและแสดงผลสัตว์
+  const animalsEvaluated = AGRI_ANIMALS
+    .filter(a => currentAnimalFilter === "all" || a.category === currentAnimalFilter)
+    .map(a => ({ ...a, result: evaluateSuitability(a, temp, hum) }))
+    .sort((a, b) => b.result.score - a.result.score);
+
+  animalGrid.innerHTML = animalsEvaluated.map(a => `
+    <div class="agri-card">
+      <div class="agri-card-header">
+        <div class="agri-card-title">
+          <div class="agri-emoji">${a.emoji}</div>
+          <div>
+            <h4>${a.name}</h4>
+            <span>ช่วงเหมาะสม: ${a.optimalTemp[0]}-${a.optimalTemp[1]}°C · ${a.optimalHum[0]}-${a.optimalHum[1]}%</span>
+          </div>
+        </div>
+        <span class="suit-badge ${a.result.badgeClass}">${a.result.badge}</span>
+      </div>
+      <div class="agri-metric-row">
+        <div class="agri-metric-col">
+          <span class="metric-col-title">อุณหภูมิที่เหมาะสม</span>
+          <span class="metric-col-val">${a.optimalTemp[0]} - ${a.optimalTemp[1]} °C</span>
+        </div>
+        <div class="agri-metric-col">
+          <span class="metric-col-title">ความชื้นที่เหมาะสม</span>
+          <span class="metric-col-val">${a.optimalHum[0]} - ${a.optimalHum[1]} %</span>
+        </div>
+      </div>
+      <p class="agri-card-tips">💡 ${a.result.advice}</p>
+    </div>
+  `).join("");
+
+  // คำนวณและแสดงผลพืช
+  const cropsEvaluated = AGRI_CROPS
+    .filter(c => currentCropFilter === "all" || c.category === currentCropFilter)
+    .map(c => ({ ...c, result: evaluateSuitability(c, temp, hum) }))
+    .sort((a, b) => b.result.score - a.result.score);
+
+  cropGrid.innerHTML = cropsEvaluated.map(c => `
+    <div class="agri-card">
+      <div class="agri-card-header">
+        <div class="agri-card-title">
+          <div class="agri-emoji">${c.emoji}</div>
+          <div>
+            <h4>${c.name}</h4>
+            <span>ช่วงเหมาะสม: ${c.optimalTemp[0]}-${c.optimalTemp[1]}°C · ${c.optimalHum[0]}-${c.optimalHum[1]}%</span>
+          </div>
+        </div>
+        <span class="suit-badge ${c.result.badgeClass}">${c.result.badge}</span>
+      </div>
+      <div class="agri-metric-row">
+        <div class="agri-metric-col">
+          <span class="metric-col-title">อุณหภูมิที่เหมาะสม</span>
+          <span class="metric-col-val">${c.optimalTemp[0]} - ${c.optimalTemp[1]} °C</span>
+        </div>
+        <div class="agri-metric-col">
+          <span class="metric-col-title">ความชื้นที่เหมาะสม</span>
+          <span class="metric-col-val">${c.optimalHum[0]} - ${c.optimalHum[1]} %</span>
+        </div>
+      </div>
+      <p class="agri-card-tips">💡 ${c.result.advice}</p>
+    </div>
+  `).join("");
+}
+
+function updateAgriAdvisory(sensorTemp, sensorHum) {
+  const currentTempEl = document.getElementById("agriCurrentTemp");
+  const currentHumEl = document.getElementById("agriCurrentHum");
+  if (!currentTempEl || !currentHumEl) return;
+
+  if (sensorTemp !== undefined && !isAgriSimMode) {
+    currentAgriLiveTemp = Number(sensorTemp);
+  }
+  if (sensorHum !== undefined && !isAgriSimMode) {
+    currentAgriLiveHum = Number(sensorHum);
+  }
+
+  const useTemp = isAgriSimMode ? simTemp : (currentAgriLiveTemp || 28);
+  const useHum = isAgriSimMode ? simHum : (currentAgriLiveHum || 65);
+
+  currentTempEl.textContent = useTemp.toFixed(1);
+  currentHumEl.textContent = useHum.toFixed(0);
+
+  // คำนวณ THI
+  const thi = calculateTHI(useTemp, useHum);
+  const thiStatus = getTHIStatus(thi);
+  const thiValEl = document.getElementById("thiValue");
+  const thiBadge = document.getElementById("thiLevelBadge");
+  const thiMeterBar = document.getElementById("thiMeterBar");
+  const thiAdvice = document.getElementById("thiAdviceText");
+
+  if (thiValEl) thiValEl.textContent = thi.toFixed(1);
+  if (thiBadge) {
+    thiBadge.textContent = thiStatus.level;
+    thiBadge.className = `thi-badge ${thiStatus.badgeClass}`;
+  }
+  if (thiMeterBar) {
+    thiMeterBar.style.width = `${thiStatus.percent}%`;
+  }
+  if (thiAdvice) {
+    thiAdvice.textContent = thiStatus.advice;
+  }
+
+  // แบนเนอร์สรุปคำแนะนำ
+  const bannerTitle = document.getElementById("agriBannerTitle");
+  const bannerBody = document.getElementById("agriBannerBody");
+  const bannerIcon = document.getElementById("agriBannerIcon");
+
+  const optimalAnimals = AGRI_ANIMALS.filter(a => evaluateSuitability(a, useTemp, useHum).score === 100);
+  const optimalCrops = AGRI_CROPS.filter(c => evaluateSuitability(c, useTemp, useHum).score === 100);
+
+  if (bannerTitle && bannerBody) {
+    if (useTemp > 32) {
+      if (bannerIcon) bannerIcon.textContent = "🔥";
+      bannerTitle.textContent = `สภาพอากาศร้อน (${useTemp.toFixed(1)}°C, ${useHum.toFixed(0)}%) - ควรระบายความร้อนในฟาร์ม`;
+      bannerBody.textContent = `แนะนำสัตว์ทนร้อน: ${optimalAnimals.slice(0, 3).map(a => a.name).join(", ") || "ปลานิล, โคเนื้อ, จิ้งหรีด"} | พืชทนร้อน: ${optimalCrops.slice(0, 3).map(c => c.name).join(", ") || "พริก, กะเพรา, เห็ดฟาง"}`;
+    } else if (useTemp < 22) {
+      if (bannerIcon) bannerIcon.textContent = "❄️";
+      bannerTitle.textContent = `สภาพอากาศเย็นสบาย (${useTemp.toFixed(1)}°C, ${useHum.toFixed(0)}%) - เหมาะกับพืชเมืองหนาวและปศุสัตว์`;
+      bannerBody.textContent = `สัตว์ที่เหมาะสม: ${optimalAnimals.slice(0, 3).map(a => a.name).join(", ") || "โคนม, สุกร, ไก่ไข่"} | พืชที่เหมาะสม: ${optimalCrops.slice(0, 3).map(c => c.name).join(", ") || "ผักสลัด, สตรอว์เบอร์รี, มะเขือเทศ"}`;
+    } else {
+      if (bannerIcon) bannerIcon.textContent = "🌱";
+      bannerTitle.textContent = `สภาพอากาศอยู่ในเกณฑ์ดีเยี่ยม (${useTemp.toFixed(1)}°C, ${useHum.toFixed(0)}%)`;
+      bannerBody.textContent = `พบสัตว์ที่เลี้ยงได้ดี ${optimalAnimals.length} ชนิด และพืชที่เพาะปลูกได้ดี ${optimalCrops.length} ชนิด สามารถเลือกดูคำแนะนำเฉพาะแต่ละชนิดด้านล่าง`;
+    }
+  }
+
+  renderAgriCards(useTemp, useHum);
+}
+
+function setupAgriListeners() {
+  const liveBtn = document.getElementById("agriLiveModeBtn");
+  const simBtn = document.getElementById("agriSimModeBtn");
+  const simTempWrap = document.getElementById("simTempSliderWrap");
+  const simHumWrap = document.getElementById("simHumSliderWrap");
+  const tempSlider = document.getElementById("simTempSlider");
+  const humSlider = document.getElementById("simHumSlider");
+  const tempSourceBadge = document.getElementById("agriTempSourceBadge");
+  const humSourceBadge = document.getElementById("agriHumSourceBadge");
+
+  if (liveBtn && simBtn) {
+    liveBtn.addEventListener("click", () => {
+      isAgriSimMode = false;
+      liveBtn.classList.add("active");
+      simBtn.classList.remove("active");
+      if (simTempWrap) simTempWrap.style.display = "none";
+      if (simHumWrap) simHumWrap.style.display = "none";
+      if (tempSourceBadge) { tempSourceBadge.textContent = "REAL-TIME"; tempSourceBadge.style.background = ""; }
+      if (humSourceBadge) { humSourceBadge.textContent = "REAL-TIME"; humSourceBadge.style.background = ""; }
+      updateAgriAdvisory();
+    });
+
+    simBtn.addEventListener("click", () => {
+      isAgriSimMode = true;
+      simBtn.classList.add("active");
+      liveBtn.classList.remove("active");
+      if (simTempWrap) simTempWrap.style.display = "flex";
+      if (simHumWrap) simHumWrap.style.display = "flex";
+      if (tempSourceBadge) { tempSourceBadge.textContent = "SIMULATOR"; tempSourceBadge.style.background = "rgba(245, 158, 11, 0.2)"; }
+      if (humSourceBadge) { humSourceBadge.textContent = "SIMULATOR"; humSourceBadge.style.background = "rgba(245, 158, 11, 0.2)"; }
+      updateAgriAdvisory();
+    });
+  }
+
+  if (tempSlider) {
+    tempSlider.addEventListener("input", (e) => {
+      simTemp = Number(e.target.value);
+      if (isAgriSimMode) updateAgriAdvisory();
+    });
+  }
+  if (humSlider) {
+    humSlider.addEventListener("input", (e) => {
+      simHum = Number(e.target.value);
+      if (isAgriSimMode) updateAgriAdvisory();
+    });
+  }
+
+  // แท็บกรองสัตว์
+  const animalChips = document.querySelectorAll("#animalFilterBar .filter-chip");
+  animalChips.forEach((chip) => {
+    chip.addEventListener("click", () => {
+      animalChips.forEach(c => c.classList.remove("active"));
+      chip.classList.add("active");
+      currentAnimalFilter = chip.getAttribute("data-filter") || "all";
+      updateAgriAdvisory();
+    });
+  });
+
+  // แท็บกรองพืช
+  const cropChips = document.querySelectorAll("#cropFilterBar .filter-chip");
+  cropChips.forEach((chip) => {
+    chip.addEventListener("click", () => {
+      cropChips.forEach(c => c.classList.remove("active"));
+      chip.classList.add("active");
+      currentCropFilter = chip.getAttribute("data-filter") || "all";
+      updateAgriAdvisory();
+    });
+  });
+}
+
+// ==========================================================================
+// ===== 11. ระบบสลับหน้าระหว่าง 3 มุมมองแบบลื่นไหลไร้รอยต่อ (SPA Navigation) =====
 // ==========================================================================
 function setupViewSwitching() {
   const navPills = document.querySelectorAll(".app-nav .nav-pill");
   const viewLive = document.getElementById("viewLive");
   const viewAnalytics = document.getElementById("viewAnalytics");
+  const viewAgriculture = document.getElementById("viewAgriculture");
 
-  if (!viewLive || !viewAnalytics) return;
+  if (!viewLive && !viewAnalytics && !viewAgriculture) return;
 
   function switchView(target, updateUrl = true) {
-    const isLive = target === "live";
-
     // อัปเดตแท็บขีดเส้นใต้
     navPills.forEach((pill) => {
-      const isPillLive = pill.getAttribute("data-view") === "live" || pill.getAttribute("href")?.includes("index.html");
-      if ((isLive && isPillLive) || (!isLive && !isPillLive)) {
+      const pView = pill.getAttribute("data-view") || (pill.getAttribute("href")?.includes("agriculture.html") ? "agriculture" : (pill.getAttribute("href")?.includes("history.html") ? "analytics" : "live"));
+      if (pView === target) {
         pill.classList.add("active");
       } else {
         pill.classList.remove("active");
@@ -1891,30 +2629,26 @@ function setupViewSwitching() {
     });
 
     const doSwitch = () => {
-      if (isLive) {
-        viewAnalytics.style.display = "none";
-        viewAnalytics.classList.remove("active");
+      [viewLive, viewAnalytics, viewAgriculture].forEach((v) => {
+        if (!v) return;
+        v.style.display = "none";
+        v.classList.remove("active");
+      });
+
+      if (target === "live" && viewLive) {
         viewLive.style.display = "flex";
         viewLive.classList.add("active");
-
         const ch = window.Chart && Chart.getChart("liveChart");
-        if (ch) {
-          applyResponsiveChart(ch);
-          ch.resize();
-          ch.update("none");
-        }
-      } else {
-        viewLive.style.display = "none";
-        viewLive.classList.remove("active");
+        if (ch) { applyResponsiveChart(ch); ch.resize(); ch.update("none"); }
+      } else if (target === "analytics" && viewAnalytics) {
         viewAnalytics.style.display = "block";
         viewAnalytics.classList.add("active");
-
         const ch = window.Chart && Chart.getChart("rangeChart");
-        if (ch) {
-          applyResponsiveChart(ch);
-          ch.resize();
-          ch.update("none");
-        }
+        if (ch) { applyResponsiveChart(ch); ch.resize(); ch.update("none"); }
+      } else if (target === "agriculture" && viewAgriculture) {
+        viewAgriculture.style.display = "block";
+        viewAgriculture.classList.add("active");
+        updateAgriAdvisory();
       }
     };
 
@@ -1925,7 +2659,7 @@ function setupViewSwitching() {
     }
 
     if (updateUrl) {
-      const targetUrl = isLive ? "index.html" : "history.html";
+      const targetUrl = target === "agriculture" ? "agriculture.html" : (target === "analytics" ? "history.html" : "index.html");
       if (!window.location.pathname.endsWith(targetUrl)) {
         try {
           history.pushState({ view: target }, "", targetUrl);
@@ -1937,20 +2671,155 @@ function setupViewSwitching() {
   navPills.forEach((pill) => {
     pill.addEventListener("click", (e) => {
       e.preventDefault();
-      const href = pill.getAttribute("href");
-      const isLive = pill.getAttribute("data-view") === "live" || href?.includes("index.html");
-      switchView(isLive ? "live" : "analytics", true);
+      const href = pill.getAttribute("href") || "";
+      const target = pill.getAttribute("data-view") || (href.includes("agriculture.html") ? "agriculture" : (href.includes("history.html") ? "analytics" : "live"));
+      switchView(target, true);
     });
   });
 
   window.addEventListener("popstate", () => {
-    const isHistory = window.location.pathname.includes("history.html");
-    switchView(isHistory ? "analytics" : "live", false);
+    const path = window.location.pathname;
+    const target = path.includes("agriculture.html") ? "agriculture" : (path.includes("history.html") ? "analytics" : "live");
+    switchView(target, false);
   });
+
+  setupAgriListeners();
+  updateAgriAdvisory();
 }
 
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", setupViewSwitching);
 } else {
   setupViewSwitching();
+}
+
+// ==========================================================================
+// ===== 11. ระบบลายน้ำและป้องกันการแคปหน้าจอ (Anti-Screenshot & Watermark System) =====
+// ==========================================================================
+
+function updateWatermark(theme = null) {
+  const watermarkBg = document.getElementById("watermarkBg");
+  if (!watermarkBg) return;
+
+  const currentTheme = theme || htmlRoot.getAttribute("data-theme") || "dark";
+  const canvas = document.createElement("canvas");
+  canvas.width = 300;
+  canvas.height = 180;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate(-22 * Math.PI / 180);
+  ctx.font = "bold 15px 'Prompt', 'Kanit', sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = currentTheme === "light" 
+    ? "rgba(30, 41, 59, 0.08)" 
+    : "rgba(255, 255, 255, 0.07)";
+  ctx.fillText("ฮั่นแน่แคปหรอจ๊ะ 📸", 0, 0);
+  ctx.restore();
+
+  try {
+    watermarkBg.style.backgroundImage = `url("${canvas.toDataURL("image/png")}")`;
+  } catch (e) {}
+}
+
+let captureToastTimer = null;
+function showCaptureToast(text = "ฮั่นแน่แคปหรอจ๊ะ! 📸 ไม่ให้แคปนะจ๊ะ") {
+  let toast = document.getElementById("captureToast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "captureToast";
+    toast.className = "capture-toast";
+    document.body.appendChild(toast);
+  }
+  toast.innerHTML = `<span>📸</span> <span>${text}</span>`;
+  toast.classList.add("show");
+  clearTimeout(captureToastTimer);
+  captureToastTimer = setTimeout(() => {
+    toast.classList.remove("show");
+  }, 3200);
+}
+
+function triggerAntiCapture() {
+  document.body.classList.add("is-capturing");
+  const shield = document.getElementById("antiCaptureShield");
+  if (shield) shield.classList.add("active");
+
+  // ล้างและเขียนทับ Clipboard ด้วยข้อความล้อเลียนทันที
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText("ฮั่นแน่แคปหรอจ๊ะ 😜 ไม่ให้แคปนะจ๊ะ!").catch(() => {});
+  }
+
+  showCaptureToast("ฮั่นแน่แคปหรอจ๊ะ! 📸 ระบบตรวจพบการพยายามแคปภาพหน้าจอ");
+
+  setTimeout(() => {
+    if (document.hasFocus()) {
+      document.body.classList.remove("is-capturing");
+      if (shield) shield.classList.remove("active");
+    }
+  }, 2500);
+}
+
+function setupAntiScreenshot() {
+  updateWatermark();
+
+  // 1. ตรวจจับการกด Win + Shift + S หรือการเปิด Snipping Tool
+  // เมื่อเปิด Snipping Tool หน้าต่างเบราว์เซอร์จะหลุดโฟกัส (Window Blur) ทันที
+  window.addEventListener("blur", () => {
+    document.body.classList.add("is-capturing");
+    const shield = document.getElementById("antiCaptureShield");
+    if (shield) shield.classList.add("active");
+  });
+
+  // เมื่อผู้ใช้คลิกกลับมาที่หน้าต่าง ให้คลายการบล็อคและแสดงผลคมชัดตามปกติ
+  window.addEventListener("focus", () => {
+    document.body.classList.remove("is-capturing");
+    const shield = document.getElementById("antiCaptureShield");
+    if (shield) shield.classList.remove("active");
+  });
+
+  // 2. ตรวจจับการกดปุ่ม PrintScreen (PrtScn)
+  window.addEventListener("keyup", (e) => {
+    if (e.key === "PrintScreen" || e.keyCode === 44) {
+      triggerAntiCapture();
+    }
+  });
+
+  // 3. ป้องกันคีย์ลัดสั่งพิมพ์ (Ctrl+P) หรือคำสั่งแคปหน้าจอพิเศษ
+  window.addEventListener("keydown", (e) => {
+    const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+    const key = (e.key || "").toLowerCase();
+
+    if (e.key === "PrintScreen" || e.keyCode === 44) {
+      triggerAntiCapture();
+      return;
+    }
+
+    if (isCtrlOrMeta && key === "p") {
+      triggerAntiCapture();
+    }
+
+    if (isCtrlOrMeta && e.shiftKey && key === "s") {
+      triggerAntiCapture();
+    }
+  });
+
+  // 4. ป้องกันการคลิกขวาเพื่อเซฟภาพกราฟหรือตัวเลขบนหน้าจอ
+  window.addEventListener("contextmenu", (e) => {
+    if (e.target.closest("input, textarea, select")) return;
+    if (e.target.closest("canvas, .card, .chart-wrapper, .table-container, .box, .agri-card")) {
+      e.preventDefault();
+      showCaptureToast("ฮั่นแน่แคปหรอจ๊ะ 🔒 ข้อมูลได้รับการคุ้มครอง");
+    }
+  });
+}
+
+// เริ่มต้นระบบป้องกันการแคปหน้าจอ
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", setupAntiScreenshot);
+} else {
+  setupAntiScreenshot();
 }

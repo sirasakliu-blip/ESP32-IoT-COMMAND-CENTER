@@ -41,6 +41,19 @@
   <div class="ambient-glow glow-2"></div>
   <div class="ambient-glow glow-3"></div>
 
+  <!-- ลายน้ำพื้นหลังถาวรป้องกันการแคปภาพหน้าจอ -->
+  <div id="watermarkBg" class="watermark-bg" aria-hidden="true"></div>
+
+  <!-- โล่ป้องกันการแคปภาพหน้าจอ (ตรวจจับ Win + Shift + S / PrintScreen / Window Blur) -->
+  <div id="antiCaptureShield" class="anti-capture-shield" aria-hidden="true">
+    <div class="shield-content">
+      <div class="shield-icon">📸</div>
+      <div class="shield-title">ฮั่นแน่แคปหรอจ๊ะ!</div>
+      <div class="shield-desc">ระบบตรวจพบการพยายามแคปภาพหน้าจอ (Screen Capture Blocked)</div>
+      <div class="shield-watermark-pattern">ฮั่นแน่แคปหรอจ๊ะ • ฮั่นแน่แคปหรอจ๊ะ • ฮั่นแน่แคปหรอจ๊ะ</div>
+    </div>
+  </div>
+
   <div class="container">
     <!-- แถบแจ้งเตือนเมื่อยังไม่ได้ตั้งค่าแหล่งข้อมูล -->
     <div id="configNotice" class="config-banner" style="display: none;">
@@ -113,6 +126,10 @@
       <a href="history.html" class="nav-pill active" data-view="analytics">
         <span class="nav-icon">📈</span>
         <span>กราฟแนวโน้ม (Analytics)</span>
+      </a>
+      <a href="agriculture.html" class="nav-pill" data-view="agriculture">
+        <span class="nav-icon">🌱</span>
+        <span>คำแนะนำภาคการเกษตร</span>
       </a>
     </nav>
 
@@ -221,29 +238,36 @@
             <div class="section-icon">🔎</div>
             <div>
               <h3>ตัวกรองช่วงเวลา</h3>
-              <span class="section-sub">เลือกวันที่และเวลาที่ต้องการสืบค้น (รองรับการค้นหาข้ามเที่ยงคืน)</span>
+              <span class="section-sub">เลือกช่วงวันที่และเวลาที่ต้องการสืบค้น (ดูได้เป็นวัน สัปดาห์ เดือน และปี)</span>
             </div>
           </div>
-          <div class="header-controls">
+          <div class="header-controls quick-ranges">
             <button id="quickTodayBtn" class="btn-sm btn-ghost" title="ตั้งค่าค้นหาวันนี้">📅 วันนี้</button>
+            <button id="quick7DaysBtn" class="btn-sm btn-ghost" title="ดูข้อมูลย้อนหลัง 7 วัน">🗓️ 7 วัน</button>
+            <button id="quick30DaysBtn" class="btn-sm btn-ghost" title="ดูข้อมูลย้อนหลัง 30 วัน">📊 30 วัน</button>
+            <button id="quickAllBtn" class="btn-sm btn-ghost" title="ดูข้อมูลทั้งหมดในระบบ">📦 ทั้งหมด</button>
           </div>
         </div>
 
         <!-- กล่องฟอร์มค้นหา -->
         <div class="search search-panel">
           <div class="input-group">
-            <label for="date"><span class="input-icon">📅</span> วันที่</label>
+            <label for="date"><span class="input-icon">📅</span> วันที่เริ่มต้น</label>
             <input type="date" id="date">
           </div>
           <div class="input-group">
-            <label for="start"><span class="input-icon">⏰</span> ตั้งแต่</label>
+            <label for="endDate"><span class="input-icon">📅</span> วันที่สิ้นสุด</label>
+            <input type="date" id="endDate">
+          </div>
+          <div class="input-group">
+            <label for="start"><span class="input-icon">⏰</span> เวลาเริ่มต้น</label>
             <input type="hidden" id="start" value="00:00">
             <div class="time-select" data-for="start">
               <select class="ts-h" aria-label="ชั่วโมงเริ่มต้น"><option value="">--</option></select><span class="ts-colon">:</span><select class="ts-m" aria-label="นาทีเริ่มต้น"><option value="">--</option></select><span class="ts-unit">น.</span>
             </div>
           </div>
           <div class="input-group">
-            <label for="end"><span class="input-icon">⌛</span> ถึง <span id="overnightTag" class="overnight-tag" style="display: none;">🌙 ข้ามวัน</span></label>
+            <label for="end"><span class="input-icon">⌛</span> เวลาสิ้นสุด <span id="overnightTag" class="overnight-tag" style="display: none;">🌙 ข้ามวัน</span></label>
             <input type="hidden" id="end" value="23:59">
             <div class="time-select" data-for="end">
               <select class="ts-h" aria-label="ชั่วโมงสิ้นสุด"><option value="">--</option></select><span class="ts-colon">:</span><select class="ts-m" aria-label="นาทีสิ้นสุด"><option value="">--</option></select><span class="ts-unit">น.</span>
@@ -323,6 +347,140 @@
               </tr>
             </tbody>
           </table>
+        </div>
+      </section>
+    </main>
+
+    <!-- มุมมอง 3: คำแนะนำภาคการเกษตรและการปศุสัตว์ (Smart Agriculture & Livestock) -->
+    <main id="viewAgriculture" class="view-panel" style="display: none;">
+      <!-- แผงแสดงสถานะสภาพแวดล้อมปัจจุบัน & ตัวจำลองอุณหภูมิความชื้น -->
+      <section class="box agri-hero-box">
+        <div class="box-header">
+          <div class="title-with-icon">
+            <div class="section-icon">🌱</div>
+            <div>
+              <h3>สภาพแวดล้อมเพื่อการเกษตรและปศุสัตว์ (Smart Farming)</h3>
+              <span class="section-sub">ประมวลผลความเหมาะสมในการเพาะปลูกและเลี้ยงสัตว์แบบ Real-time ตามค่าอุณหภูมิและความชื้น</span>
+            </div>
+          </div>
+          <div class="header-badges">
+            <div class="mode-switch-pill">
+              <button id="agriLiveModeBtn" class="mode-btn active" title="ใช้ข้อมูลสดจากเซนเซอร์ ESP32">⚡ ค่าสดจากเซนเซอร์</button>
+              <button id="agriSimModeBtn" class="mode-btn" title="ปรับจำลองอุณหภูมิและความชื้นเพื่อทดลองวางแผน">🎚️ ทดลองจำลองค่า</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- การ์ดตัวชี้วัดสภาพแวดล้อมเพื่อการเกษตร -->
+        <div class="agri-env-grid">
+          <!-- การ์ดอุณหภูมิวิเคราะห์ -->
+          <div class="agri-env-card">
+            <div class="agri-card-label">
+              <span>🌡️ อุณหภูมิที่ใช้ประเมิน</span>
+              <span id="agriTempSourceBadge" class="source-mini-badge">REAL-TIME</span>
+            </div>
+            <div class="agri-env-val">
+              <span id="agriCurrentTemp">--</span><span class="unit">°C</span>
+            </div>
+            <div class="sim-slider-wrap" id="simTempSliderWrap" style="display: none;">
+              <input type="range" id="simTempSlider" min="10" max="45" step="0.5" value="28">
+              <div class="slider-labels"><span>10°C (หนาว)</span><span>28°C</span><span>45°C (ร้อนจัด)</span></div>
+            </div>
+          </div>
+
+          <!-- การ์ดความชื้นวิเคราะห์ -->
+          <div class="agri-env-card">
+            <div class="agri-card-label">
+              <span>💧 ความชื้นสัมพัทธ์ที่ใช้ประเมิน</span>
+              <span id="agriHumSourceBadge" class="source-mini-badge">REAL-TIME</span>
+            </div>
+            <div class="agri-env-val">
+              <span id="agriCurrentHum">--</span><span class="unit">%</span>
+            </div>
+            <div class="sim-slider-wrap" id="simHumSliderWrap" style="display: none;">
+              <input type="range" id="simHumSlider" min="20" max="95" step="1" value="65">
+              <div class="slider-labels"><span>20% (แห้งแล้ง)</span><span>65%</span><span>95% (ชื้นจัด)</span></div>
+            </div>
+          </div>
+
+          <!-- การ์ดดัชนี THI ความเครียดปศุสัตว์ -->
+          <div class="agri-env-card thi-card">
+            <div class="agri-card-label">
+              <span>📊 ดัชนีความเครียดสัตว์ (THI)</span>
+              <span id="thiLevelBadge" class="thi-badge thi-normal">ปกติ (Comfort)</span>
+            </div>
+            <div class="agri-env-val">
+              <span id="thiValue">--</span><span class="unit">THI</span>
+            </div>
+            <div class="thi-desc-wrap">
+              <div class="thi-meter">
+                <div class="thi-meter-bar" id="thiMeterBar" style="width: 50%;"></div>
+              </div>
+              <p id="thiAdviceText" class="thi-advice">ประเมินความเครียดจากความร้อนในสัตว์เลี้ยง</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- กล่องคำแนะนำด่วนประจำสภาพอากาศปัจจุบัน -->
+        <div class="agri-summary-banner" id="agriSummaryBanner">
+          <div class="banner-icon" id="agriBannerIcon">💡</div>
+          <div class="banner-content">
+            <h4 id="agriBannerTitle">กำลังประมวลผลคำแนะนำ...</h4>
+            <p id="agriBannerBody">รอรับสัญญาณข้อมูลจากเซนเซอร์เพื่อจับคู่สัตว์เลี้ยงและพืชที่เหมาะสมที่สุด</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ส่วนที่ 1: การประเมินการเลี้ยงสัตว์ (Livestock Recommendation) -->
+      <section class="box agri-section">
+        <div class="box-header">
+          <div class="title-with-icon">
+            <div class="section-icon">🐾</div>
+            <div>
+              <h3>สัตว์ที่เหมาะสมกับสภาพอากาศนี้ (Livestock & Aquaculture)</h3>
+              <span class="section-sub">วิเคราะห์อัตราการเจริญเติบโต ความเสี่ยงต่อสุขภาพ และการจัดการโรงเรือน</span>
+            </div>
+          </div>
+          <!-- แท็บกรองสัตว์ -->
+          <div class="agri-filter-bar" id="animalFilterBar">
+            <button class="filter-chip active" data-filter="all">ทั้งหมด</button>
+            <button class="filter-chip" data-filter="poultry">🐔 สัตว์ปีก</button>
+            <button class="filter-chip" data-filter="swine">🐷 สุกร</button>
+            <button class="filter-chip" data-filter="cattle">🐄 โค/กระบือ</button>
+            <button class="filter-chip" data-filter="aqua">🐟 สัตว์น้ำ</button>
+            <button class="filter-chip" data-filter="insect">🦗 แมลงเศรษฐกิจ</button>
+          </div>
+        </div>
+
+        <!-- Grid การ์ดสัตว์แต่ละชนิด -->
+        <div class="agri-cards-grid" id="animalCardsGrid">
+          <!-- สร้างแบบ Dynamic -->
+        </div>
+      </section>
+
+      <!-- ส่วนที่ 2: การประเมินการเพาะปลูกพืช (Crops & Plants Recommendation) -->
+      <section class="box agri-section">
+        <div class="box-header">
+          <div class="title-with-icon">
+            <div class="section-icon">🌾</div>
+            <div>
+              <h3>พืชที่เหมาะสมกับสภาพอากาศนี้ (Crops & Horticulture)</h3>
+              <span class="section-sub">วิเคราะห์การติดดอกออกผล โรคพืชที่ต้องระวัง และระบบการให้น้ำที่แนะนำ</span>
+            </div>
+          </div>
+          <!-- แท็บกรองพืช -->
+          <div class="agri-filter-bar" id="cropFilterBar">
+            <button class="filter-chip active" data-filter="all">ทั้งหมด</button>
+            <button class="filter-chip" data-filter="salad">🥬 ผักสลัด/ไฮโดรฯ</button>
+            <button class="filter-chip" data-filter="veggie">🌶️ พืชผักสวนครัว</button>
+            <button class="filter-chip" data-filter="fruit">🍈 ไม้ผล/ผลไม้</button>
+            <button class="filter-chip" data-filter="mushroom">🍄 โรงเพาะเห็ด</button>
+          </div>
+        </div>
+
+        <!-- Grid การ์ดพืชแต่ละชนิด -->
+        <div class="agri-cards-grid" id="cropCardsGrid">
+          <!-- สร้างแบบ Dynamic -->
         </div>
       </section>
     </main>
