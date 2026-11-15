@@ -11,6 +11,18 @@ module.exports = async (req, res) => {
     return res.status(200).end();
   }
 
+  // ป้องกันการเข้าถึง API หลังบ้านโดยตรงผ่านการพิมพ์ URL บนเบราว์เซอร์
+  const secFetchDest = req.headers['sec-fetch-dest'];
+  const secFetchMode = req.headers['sec-fetch-mode'];
+  const acceptHeader = req.headers['accept'] || '';
+  if (secFetchDest === 'document' || secFetchMode === 'navigate' || acceptHeader.includes('text/html')) {
+    return res.status(403).json({
+      status: 'error',
+      message: '🔒 ไม่อนุญาตให้เข้าถึง API หลังบ้านโดยตรง (Direct access is forbidden)',
+      code: 'DIRECT_ACCESS_BLOCKED'
+    });
+  }
+
   const FIREBASE_LIVE_URL = process.env.FIREBASE_LIVE_URL || 
     "https://temp-humid-esp32-db4b9-default-rtdb.asia-southeast1.firebasedatabase.app/live.json";
 

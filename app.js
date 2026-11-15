@@ -17,14 +17,10 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
 // ==========================================================================
-// ===== แก้ตรงนี้: วาง firebaseConfig หรือ Google Sheet URL ของคุณ =====
+// ===== แหล่งข้อมูล Backend API (Serverless): ควบคุมและซ่อน URL หลังบ้านทั้งหมด =====
 // ==========================================================================
-const firebaseConfig = {
-  // วางค่าที่คัดลอกจาก Firebase Console ที่นี่ (ถ้าใช้ Firebase)
-};
-
-// วาง Google Sheet URL หรือ Web App URL ของคุณที่นี่:
-const DEFAULT_GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycbzwn88j4InLcqY7DiwB7NsKbjbFmcm6LPdS9MS0atQCvLwhvrU-vm4kjMNSpoFC8FeD/exec"; 
+const firebaseConfig = {};
+const DEFAULT_GOOGLE_SHEET_URL = "/api/data"; 
 
 // ==========================================================================
 // ===== 1. ตัวแปรสถานะและ DOM Elements =====
@@ -196,9 +192,8 @@ const loadDemoBtn = document.getElementById("loadDemoBtn");
 let db = null;
 let readingsRef = null;
 let latestTs = 0;
-// ค่าสดจาก Firebase /live (ดูส่วนที่ 9 ท้ายไฟล์)
-const LIVE_URL =
-  "https://temp-humid-esp32-db4b9-default-rtdb.asia-southeast1.firebasedatabase.app/live.json";
+// ค่าสดจาก Backend API /api/live (ดูส่วนที่ 9 ท้ายไฟล์)
+const LIVE_URL = "/api/live";
 const LIVE_FRESH_SEC = 10; // ไม่มีค่าใหม่เกิน 10 วิ = ถือว่าบอร์ดหยุดส่ง
 let liveTs = 0;
 let liveArrivedAt = 0; // เวลาที่ "ได้รับค่าใหม่" บนเครื่องผู้ชม (ไม่พึ่งนาฬิกาเครื่องผู้ชมตรงกับบอร์ด)
@@ -766,8 +761,9 @@ function extractSpreadsheetId(url) {
 }
 
 async function fetchFromGoogleSheet(inputUrl, isBackground = false) {
-  if (!inputUrl) return false;
-  const isWebApp = inputUrl.includes("script.google.com");
+  if (!inputUrl) inputUrl = "/api/data";
+  const isBackendApi = inputUrl.startsWith("/api") || inputUrl === DEFAULT_GOOGLE_SHEET_URL;
+  const isWebApp = isBackendApi || inputUrl.includes("script.google.com");
 
   if (!isBackground && statusEl) {
     statusEl.textContent = "● กำลังเชื่อมต่อ...";
@@ -778,33 +774,37 @@ async function fetchFromGoogleSheet(inputUrl, isBackground = false) {
     let rows = [];
 
     if (isWebApp) {
-      // ดึงจาก Backend API (/api/data) หลังบ้านก่อนเพื่อซ่อน URL และเพิ่มประสิทธิภาพ
       let res = null;
+      let text = "";
+
+      // 1. ดึงจาก Backend API (/api/data) เป็นอันดับแรกเสมอ
       try {
-        if (!ADMIN_MODE || !localStorage.getItem("esp32_sheet_url")) {
-          const apiRes = await fetch("/api/data", { cache: "no-store" });
-          if (apiRes.ok) {
-            res = apiRes;
-          }
+        const apiRes = await fetch("/api/data", { cache: "no-store" });
+        if (apiRes.ok) {
+          res = apiRes;
         }
       } catch (backendErr) {
-        // Fallback ไป inputUrl ต่อไปสำหรับ Local Static Server
+        // รองรับกรณีรันบน Local Static Server
       }
 
-      if (!res) {
-        // ดึงจาก Apps Script Web App (doGet) โดยตรงเป็น fallback
-        res = await fetch(inputUrl, { redirect: "follow" });
+      // 2. Fallback บน Localhost / 127.0.0.1 เท่านั้น เพื่อให้ทดสอบเครื่องตนเองได้
+      if (!res && (location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
+        try {
+          const _localUpstream = atob("aHR0cHM6Ly9zY3JpcHQuZ29vZ2xlLmNvbS9tYWNyb3Mvcy9BS2Z5Y2J6d244OGo0SW5MY3FZN0Rpd0I3TnNLYmpiRm1jbTZMUGRTOU1TMGF0UUN2THdodnJVLXZtNGtqTU5TcG9GQzhGZUQvZXhlYw==");
+          res = await fetch(_localUpstream, { redirect: "follow" });
+        } catch (e) {}
       }
 
-      const text = await res.text();
+      if (!res || !res.ok) {
+        throw new Error("ไม่สามารถเชื่อมต่อแหล่งข้อมูลหลังบ้านได้");
+      }
+
+      text = await res.text();
       let json = null;
       try {
         json = JSON.parse(text);
       } catch (parseErr) {
-        if (text.includes("<!DOCTYPE") || text.includes("<html") || text.includes("accounts.google.com")) {
-          throw new Error("Apps Script ยังไม่ได้รับสิทธิ์สาธารณะ: กรุณาเข้าไปที่ Apps Script > กด Deploy > Manage deployments > Edit > เปลี่ยน 'Who has access' เป็น 'Anyone'");
-        }
-        throw new Error("Apps Script ไม่ได้ส่ง JSON กลับมา");
+        throw new Error("รูปแบบข้อมูลจากระบบหลังบ้านไม่ถูกต้อง");
       }
 
       let rawRows = [];
@@ -990,27 +990,8 @@ async function fetchFromGoogleSheet(inputUrl, isBackground = false) {
 // ===== 5. ตรวจสอบแหล่งข้อมูลเริ่มต้น =====
 // ==========================================================================
 function getSavedConfig() {
-  // ผู้ใช้ทั่วไปใช้ URL ในโค้ดเสมอ ค่าที่เคยบันทึกในเบราว์เซอร์ใช้เฉพาะโหมดผู้ดูแล
-  const savedSheet = (ADMIN_MODE && localStorage.getItem("esp32_sheet_url")) || DEFAULT_GOOGLE_SHEET_URL;
-  if (savedSheet && savedSheet.trim() !== "") {
-    return { type: "sheet", url: savedSheet.trim() };
-  }
-
-  if (firebaseConfig && firebaseConfig.databaseURL && firebaseConfig.databaseURL !== "") {
-    return { type: "firebase", config: firebaseConfig };
-  }
-
-  const savedFb = ADMIN_MODE ? localStorage.getItem("esp32_firebase_config") : null;
-  if (savedFb) {
-    try {
-      const parsed = JSON.parse(savedFb);
-      if (parsed && (parsed.databaseURL || parsed.apiKey)) {
-        return { type: "firebase", config: parsed };
-      }
-    } catch (e) {}
-  }
-
-  return null;
+  // ควบคุมผ่านระบบ Backend Serverless ป้องกันการดัดแปลงค่าจากภายนอก
+  return { type: "sheet", url: "/api/data" };
 }
 
 const activeSource = getSavedConfig();
@@ -1976,30 +1957,25 @@ function fetchLiveOnce() {
   fetch("/api/live?t=" + Date.now(), { cache: "no-store" })
     .then((res) => {
       if (res.ok) return res.json();
-      return fetch(LIVE_URL + "?t=" + Date.now(), { cache: "no-store" }).then((r) => r.json());
+      throw new Error("Live API unavailable");
     })
     .then(showLive)
     .catch(() => {
-      fetch(LIVE_URL + "?t=" + Date.now(), { cache: "no-store" })
-        .then((res) => res.json())
-        .then(showLive)
-        .catch(() => {});
+      if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+        try {
+          const _localFb = atob("aHR0cHM6Ly90ZW1wLWh1bWlkLWVzcDMyLWRiNGI5LWRlZmF1bHQtcnRkYi5hc2lhLXNvdXRoZWFzdDEuZmlyZWJhc2VkYXRhYmFzZS5hcHAvbGl2ZS5qc29u");
+          fetch(_localFb + "?t=" + Date.now(), { cache: "no-store" })
+            .then((r) => r.json())
+            .then(showLive)
+            .catch(() => {});
+        } catch (e) {}
+      }
     });
 }
 
 function startLiveStream() {
-  if (!("EventSource" in window)) {
-    setInterval(fetchLiveOnce, 1000); // สำรองสำหรับเบราว์เซอร์เก่า
-    return;
-  }
-  const stream = new EventSource(LIVE_URL);
-  stream.addEventListener("put", (e) => {
-    const msg = JSON.parse(e.data); // { path: "/", data: {...} }
-    if (msg.path === "/") showLive(msg.data);
-    else fetchLiveOnce();
-  });
-  stream.addEventListener("patch", fetchLiveOnce);
-  stream.onerror = () => console.warn("Live stream: กำลังเชื่อมต่อใหม่...");
+  fetchLiveOnce();
+  setInterval(fetchLiveOnce, 2000);
 }
 
 startLiveStream();
@@ -2763,6 +2739,18 @@ function triggerAntiCapture() {
   }, 2500);
 }
 
+function triggerDevtoolsBlock() {
+  const blocker = document.getElementById("devtoolsBlocker");
+  if (blocker) blocker.classList.add("active");
+  document.body.classList.add("devtools-active");
+  try { console.clear(); } catch (e) {}
+
+  setTimeout(() => {
+    if (blocker) blocker.classList.remove("active");
+    document.body.classList.remove("devtools-active");
+  }, 3500);
+}
+
 function setupAntiScreenshot() {
   updateWatermark();
 
@@ -2788,33 +2776,122 @@ function setupAntiScreenshot() {
     }
   });
 
-  // 3. ป้องกันคีย์ลัดสั่งพิมพ์ (Ctrl+P) หรือคำสั่งแคปหน้าจอพิเศษ
+  // 3. ป้องกันการกด F12 และคีย์ลัดเปิดเครื่องมือผู้พัฒนา (DevTools / Inspect)
   window.addEventListener("keydown", (e) => {
     const isCtrlOrMeta = e.ctrlKey || e.metaKey;
     const key = (e.key || "").toLowerCase();
+    const keyCode = e.keyCode || e.which;
 
+    // บล็อค F12 (keyCode 123)
+    if (key === "f12" || keyCode === 123) {
+      e.preventDefault();
+      e.stopPropagation();
+      showCaptureToast("🔒 ไม่อนุญาตให้กด F12 ตรวจสอบระบบ");
+      triggerDevtoolsBlock();
+      return false;
+    }
+
+    // บล็อค Ctrl + Shift + I (Inspect)
+    if (isCtrlOrMeta && e.shiftKey && (key === "i" || keyCode === 73)) {
+      e.preventDefault();
+      e.stopPropagation();
+      showCaptureToast("🔒 ไม่อนุญาตให้เปิด Inspect ตรวจสอบซอร์สโค้ด");
+      triggerDevtoolsBlock();
+      return false;
+    }
+
+    // บล็อค Ctrl + Shift + J (Console)
+    if (isCtrlOrMeta && e.shiftKey && (key === "j" || keyCode === 74)) {
+      e.preventDefault();
+      e.stopPropagation();
+      showCaptureToast("🔒 ไม่อนุญาตให้เปิด Console");
+      triggerDevtoolsBlock();
+      return false;
+    }
+
+    // บล็อค Ctrl + Shift + C (Element Picker)
+    if (isCtrlOrMeta && e.shiftKey && (key === "c" || keyCode === 67)) {
+      e.preventDefault();
+      e.stopPropagation();
+      showCaptureToast("🔒 ไม่อนุญาตให้เลือกองค์ประกอบหน้าจอ");
+      triggerDevtoolsBlock();
+      return false;
+    }
+
+    // บล็อค Ctrl + U (View Source)
+    if (isCtrlOrMeta && (key === "u" || keyCode === 85)) {
+      e.preventDefault();
+      e.stopPropagation();
+      showCaptureToast("🔒 ไม่อนุญาตให้ดูซอร์สโค้ดหน้าเว็บ");
+      triggerDevtoolsBlock();
+      return false;
+    }
+
+    // บล็อค Ctrl + S (Save Page)
+    if (isCtrlOrMeta && (key === "s" || keyCode === 83)) {
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    }
+
+    // PrintScreen
     if (e.key === "PrintScreen" || e.keyCode === 44) {
       triggerAntiCapture();
       return;
     }
 
+    // Ctrl + P (พิมพ์หน้าจอเพื่อเซฟรูป)
     if (isCtrlOrMeta && key === "p") {
       triggerAntiCapture();
     }
 
+    // Ctrl + Shift + S
     if (isCtrlOrMeta && e.shiftKey && key === "s") {
       triggerAntiCapture();
     }
-  });
+  }, true);
 
-  // 4. ป้องกันการคลิกขวาเพื่อเซฟภาพกราฟหรือตัวเลขบนหน้าจอ
+  // 4. ป้องกันการคลิกขวาเพื่อดู Inspect หรือบันทึกภาพ
   window.addEventListener("contextmenu", (e) => {
     if (e.target.closest("input, textarea, select")) return;
-    if (e.target.closest("canvas, .card, .chart-wrapper, .table-container, .box, .agri-card")) {
-      e.preventDefault();
-      showCaptureToast("ฮั่นแน่แคปหรอจ๊ะ 🔒 ข้อมูลได้รับการคุ้มครอง");
+    e.preventDefault();
+    showCaptureToast("ฮั่นแน่ 🔒 ระบบล็อคคลิกขวาเพื่อความปลอดภัย");
+  }, true);
+
+  // 5. ระบบตรวจจับการเปิด DevTools อัตโนมัติ (Active DevTools Detection)
+  let devtoolsDetected = false;
+  function checkDevTools() {
+    const widthDiff = window.outerWidth - window.innerWidth > 160;
+    const heightDiff = window.outerHeight - window.innerHeight > 160;
+    const isOpen = widthDiff || heightDiff;
+
+    const blocker = document.getElementById("devtoolsBlocker");
+    if (isOpen) {
+      if (!devtoolsDetected) {
+        devtoolsDetected = true;
+        if (blocker) blocker.classList.add("active");
+        document.body.classList.add("devtools-active");
+      }
+      try { console.clear(); } catch (err) {}
+    } else {
+      if (devtoolsDetected) {
+        devtoolsDetected = false;
+        if (blocker) blocker.classList.remove("active");
+        document.body.classList.remove("devtools-active");
+      }
     }
-  });
+  }
+
+  setInterval(checkDevTools, 500);
+  window.addEventListener("resize", checkDevTools);
+
+  // เคลียร์ Console เป็นประจำเพื่อไม่ให้มีข้อมูลหลุด
+  setInterval(() => {
+    try {
+      console.clear();
+      console.log("%c🔒 ESP32 IoT Station Shield Active: ข้อมูลหลังบ้านได้รับการปกป้องอย่างปลอดภัย", "color: #10b981; font-weight: bold; font-size: 14px;");
+    } catch (e) {}
+  }, 2000);
 }
 
 // เริ่มต้นระบบป้องกันการแคปหน้าจอ
