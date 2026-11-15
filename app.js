@@ -469,6 +469,8 @@ function makeChart(id) {
       scales: {
         x: {
           type: "linear", // แกนเวลาจริง: ระยะห่างตามเวลา ช่วงที่ขาดข้อมูลจะเห็นชัด
+          bounds: "data",
+          offset: false,
           afterBuildTicks: (axis) => {
             // สร้างขีดเองให้ตรงเวลาไทยพอดี (เช่น 00:00, 00:15, 00:30)
             const step = axis.options.ticks.stepSize;
@@ -476,7 +478,7 @@ function makeChart(id) {
             const off = 7 * 3600 * 1000;
             const first = Math.ceil((axis.min + off) / step) * step - off;
             const ticks = [];
-            for (let v = first; v <= axis.max + 1; v += step) ticks.push({ value: v });
+            for (let v = first; v <= axis.max; v += step) ticks.push({ value: v });
             axis.ticks = ticks;
           },
           title: { display: true, text: "เวลา (น.)", color: theme.tickColor, font: { weight: 'bold', size: 12 } },
@@ -558,10 +560,10 @@ function updateChart(chart, rows, opts = {}) {
     sc.yT.min = Math.floor((Math.min(...t) - padT) / 2) * 2; sc.yT.max = Math.ceil((Math.max(...t) + padT) / 2) * 2;
     sc.yH.min = Math.max(0, Math.floor((Math.min(...h) - padH) / 5) * 5); sc.yH.max = Math.min(100, Math.ceil((Math.max(...h) + padH) / 5) * 5);
     sc.yT.ticks.stepSize = 2; sc.yH.ticks.stepSize = 5;
-    let xMin = opts.xMin !== undefined ? opts.xMin : valid[0].ts * 1000;
-    let xMax = opts.xMax !== undefined ? opts.xMax : valid[valid.length - 1].ts * 1000;
+    let xMin = (opts.xMin !== undefined && (!valid.length || opts.fitToExactRange)) ? opts.xMin : valid[0].ts * 1000;
+    let xMax = (opts.xMax !== undefined && (!valid.length || opts.fitToExactRange)) ? opts.xMax : valid[valid.length - 1].ts * 1000;
     if (xMax - xMin < 60000) { xMin -= 30000; xMax += 30000; }
-    setTimeAxis(sc.x, xMin, xMax, opts.xMin === undefined);
+    setTimeAxis(sc.x, xMin, xMax);
   } else {
     delete sc.yT.min; delete sc.yT.max; delete sc.yH.min; delete sc.yH.max;
     delete sc.yT.ticks.stepSize; delete sc.yH.ticks.stepSize;
@@ -615,9 +617,9 @@ window.addEventListener("resize", () => {
   });
 });
 
-// แกนเวลา: เลือกระยะห่างขีดเป็นนาทีกลมๆ (5, 10, 15, 30 นาที, 1, 2, 3 ชม., 1 วัน, 2 วัน, 7 วัน, 30 วัน ...) ไม่เกิน ~8 ขีด
-// roundEnds = true จะขยายขอบซ้าย/ขวาให้ตรงขีดพอดี (ใช้กับกราฟข้อมูลทั้งหมด/24 ชม.)
-function setTimeAxis(x, minMs, maxMs, roundEnds) {
+// แกนเวลา: เลือกระยะห่างขีดเป็นนาทีกลมๆ (5, 10, 15, 30 นาที, 1, 2, 3 ชม., 1 วัน, 2 วัน, 7 วัน, 30 วัน ...)
+// กำหนด min และ max ตรงตามจุดแรกและจุดสุดท้ายของข้อมูลจริง เพื่อให้เส้นกราฟเต็มพื้นที่ซ้าย-ขวา 100% ตลอดเวลา
+function setTimeAxis(x, minMs, maxMs) {
   const steps = [
     1, 2, 5, 10, 15, 30, 60, 120, 180, 240, 360, 720, 1440,
     2880, 4320, 7200, 10080, 20160, 43200
@@ -626,12 +628,11 @@ function setTimeAxis(x, minMs, maxMs, roundEnds) {
   const maxTicks = isNarrow() ? 5 : 8; // มือถือแสดงขีดเวลาน้อยลงไม่ให้ทับกัน
   const stepMin = steps.find((m) => spanMin / m <= maxTicks) || (Math.ceil(spanMin / maxTicks / 1440) * 1440);
   const stepMs = stepMin * 60000;
-  const off = 7 * 3600 * 1000; // ให้ขีดตรงเวลาไทย
-  if (roundEnds) {
-    minMs = Math.floor((minMs + off) / stepMs) * stepMs - off;
-    maxMs = Math.ceil((maxMs + off) / stepMs) * stepMs - off;
-  }
-  x.min = minMs; x.max = maxMs;
+
+  x.min = minMs;
+  x.max = maxMs;
+  x.bounds = "data";
+  x.offset = false;
   x.ticks.stepSize = stepMs;
 }
 
@@ -758,6 +759,26 @@ function extractSpreadsheetId(url) {
   if (!url) return "";
   const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   return match ? match[1] : url.trim();
+}
+
+function getTodayDailyRows(rows) {
+  if (!rows || !rows.length) return [];
+  const valid = rows.filter((r) => r.ts > 0).sort((a, b) => a.ts - b.ts);
+  if (!valid.length) return [];
+
+  // หาวันล่าสุดที่มีข้อมูลบันทึกในระบบ (เช่น วันนี้)
+  const lastRow = valid[valid.length - 1];
+  const targetDate = lastRow.date;
+
+  // กรองเฉพาะข้อมูลใน 1 วันนั้น ตั้งแต่เที่ยงคืน (00:00) ถึง 23:59 น.
+  const dayRows = valid.filter((r) => r.date === targetDate);
+
+  // หากเพิ่งขึ้นวันใหม่และมีข้อมูลน้อยกว่า 6 จุด ให้ใช้ช่วง 24 ชั่วโมงล่าสุดเพื่อไม่ให้กราฟว่าง
+  if (dayRows.length < 6 && valid.length >= 6) {
+    const minTs = lastRow.ts - 24 * 3600;
+    return valid.filter((r) => r.ts >= minTs);
+  }
+  return dayRows;
 }
 
 async function fetchFromGoogleSheet(inputUrl, isBackground = false) {
@@ -923,10 +944,19 @@ async function fetchFromGoogleSheet(inputUrl, isBackground = false) {
     updateMinMaxSub(rows);
     checkStatus();
 
-    // กราฟ 24 ชม. ล่าสุด (นับตามเวลาจริง ไม่ใช่จำนวนแถว)
-    const lastTsAll = rows[rows.length - 1].ts;
-    const last24 = rows.filter((r) => r.ts >= lastTsAll - 24 * 3600);
-    updateChart(liveChart, last24, { title: rangeTitle(last24, "24 ชม. ล่าสุด: ") });
+    // กราฟประจำวัน 24 ชั่วโมง (เที่ยงคืน 00:00 - 23:59 น.) ให้เส้นกราฟเต็มกราฟ
+    const dailyRows = getTodayDailyRows(rows);
+    if (dailyRows.length) {
+      const fTs = dailyRows[0].ts * 1000;
+      const lTs = dailyRows[dailyRows.length - 1].ts * 1000;
+      const dateLabel = fmtThDate(lTs);
+      const dayTitle = `กราฟประจำวัน: ${dateLabel} (00:00 – 23:59 น.) · ${dailyRows.length} จุด`;
+      updateChart(liveChart, dailyRows, {
+        title: dayTitle,
+        xMin: fTs,
+        xMax: lTs
+      });
+    }
 
     updateDataRangeHint(rows);
 
@@ -966,9 +996,18 @@ async function fetchFromGoogleSheet(inputUrl, isBackground = false) {
           updateMetricPills(last.temp, last.hum);
           updateMinMaxSub(cachedRows);
           updateDataRangeHint(cachedRows);
-          const lastTsAll = cachedRows[cachedRows.length - 1].ts;
-          const last24 = cachedRows.filter((r) => r.ts >= lastTsAll - 24 * 3600);
-          updateChart(liveChart, last24, { title: rangeTitle(last24, "24 ชม. ล่าสุด: ") });
+          const dailyCached = getTodayDailyRows(cachedRows);
+          if (dailyCached.length) {
+            const fTs = dailyCached[0].ts * 1000;
+            const lTs = dailyCached[dailyCached.length - 1].ts * 1000;
+            const dateLabel = fmtThDate(lTs);
+            const dayTitle = `กราฟประจำวัน: ${dateLabel} (00:00 – 23:59 น.) · ${dailyCached.length} จุด`;
+            updateChart(liveChart, dailyCached, {
+              title: dayTitle,
+              xMin: fTs,
+              xMax: lTs
+            });
+          }
           updateChart(rangeChart, cachedRows, { title: rangeTitle(cachedRows, "ข้อมูลทั้งหมด: ") });
           renderTable(cachedRows);
           renderSummary(cachedRows);
@@ -1360,7 +1399,9 @@ async function runSearch(silent = false) {
     }
   }
 
-  updateChart(rangeChart, rows, { ...range, title: `ผลการค้นหา: ${label} · ${rows.length} จุด`, emptyMessage: "ไม่มีข้อมูลในช่วงนี้" });
+  const rXMin = rows.length ? rows[0].ts * 1000 : startTs * 1000;
+  const rXMax = rows.length ? rows[rows.length - 1].ts * 1000 : endTs * 1000;
+  updateChart(rangeChart, rows, { xMin: rXMin, xMax: rXMax, title: `ผลการค้นหา: ${label} · ${rows.length} จุด`, emptyMessage: "ไม่มีข้อมูลในช่วงนี้" });
   renderTable(rows);
   renderSummary(rows, s, e);
   setupExportCsv(rows);
@@ -2604,6 +2645,22 @@ function setupViewSwitching() {
       }
     });
 
+    // อัปเดตหัวข้อ Header ให้ตรงกับหน้าที่เลือกเสมอ
+    const headerTitle = document.querySelector(".app-header h1");
+    const headerSub = document.querySelector(".app-header .subtitle");
+    if (headerTitle && headerSub) {
+      if (target === "live") {
+        headerTitle.textContent = "ระบบวัดอุณหภูมิและความชื้น";
+        headerSub.textContent = "ระบบตรวจวัดสภาพแวดล้อม Real-time";
+      } else if (target === "analytics") {
+        headerTitle.textContent = "ค้นหาข้อมูลตามช่วงเวลา";
+        headerSub.textContent = "สืบค้นประวัติย้อนหลัง พร้อมวิเคราะห์ค่าสถิติ ต่ำสุด-สูงสุด-เฉลี่ย";
+      } else if (target === "agriculture") {
+        headerTitle.textContent = "คำแนะนำภาคการเกษตรและปศุสัตว์";
+        headerSub.textContent = "ระบบวิเคราะห์ความเหมาะสมในการเพาะปลูกและเลี้ยงสัตว์ Real-time";
+      }
+    }
+
     const doSwitch = () => {
       [viewLive, viewAnalytics, viewAgriculture].forEach((v) => {
         if (!v) return;
@@ -2659,6 +2716,18 @@ function setupViewSwitching() {
     switchView(target, false);
   });
 
+  // เปิดเว็บครั้งแรก: บังคับให้อยู่ที่หน้าแดชบอร์ดภาพรวม (Live Overview) เสมอ
+  const currentPath = window.location.pathname;
+  let initView = "live";
+  if (currentPath.endsWith("agriculture.html")) {
+    initView = "agriculture";
+  } else if (currentPath.endsWith("history.html")) {
+    initView = "analytics";
+  } else {
+    initView = "live";
+  }
+  switchView(initView, false);
+
   setupAgriListeners();
   updateAgriAdvisory();
 }
@@ -2670,7 +2739,7 @@ if (document.readyState === "loading") {
 }
 
 // ==========================================================================
-// ===== 11. ระบบลายน้ำและป้องกันการแคปหน้าจอ (Anti-Screenshot & Watermark System) =====
+// ===== 11. ระบบลายน้ำและป้องกันการแคปหน้าจอ (Watermark & Silent Anti-Tamper) =====
 // ==========================================================================
 
 function updateWatermark(theme = null) {
@@ -2702,81 +2771,24 @@ function updateWatermark(theme = null) {
   } catch (e) {}
 }
 
-let captureToastTimer = null;
-function showCaptureToast(text = "ฮั่นแน่แคปหรอจ๊ะ! 📸 ไม่ให้แคปนะจ๊ะ") {
-  let toast = document.getElementById("captureToast");
-  if (!toast) {
-    toast = document.createElement("div");
-    toast.id = "captureToast";
-    toast.className = "capture-toast";
-    document.body.appendChild(toast);
-  }
-  toast.innerHTML = `<span>📸</span> <span>${text}</span>`;
-  toast.classList.add("show");
-  clearTimeout(captureToastTimer);
-  captureToastTimer = setTimeout(() => {
-    toast.classList.remove("show");
-  }, 3200);
-}
-
 function triggerAntiCapture() {
-  document.body.classList.add("is-capturing");
-  const shield = document.getElementById("antiCaptureShield");
-  if (shield) shield.classList.add("active");
-
-  // ล้างและเขียนทับ Clipboard ด้วยข้อความล้อเลียนทันที
+  // ล้างและเขียนทับ Clipboard ด้วยข้อความล้อเลียนอย่างเงียบๆ โดยไม่แสดงป๊อบอัพ
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText("ฮั่นแน่แคปหรอจ๊ะ 😜 ไม่ให้แคปนะจ๊ะ!").catch(() => {});
+    navigator.clipboard.writeText("ฮั่นแน่แคปหรอจ๊ะ 😜").catch(() => {});
   }
-
-  showCaptureToast("ฮั่นแน่แคปหรอจ๊ะ! 📸 ระบบตรวจพบการพยายามแคปภาพหน้าจอ");
-
-  setTimeout(() => {
-    if (document.hasFocus()) {
-      document.body.classList.remove("is-capturing");
-      if (shield) shield.classList.remove("active");
-    }
-  }, 2500);
-}
-
-function triggerDevtoolsBlock() {
-  const blocker = document.getElementById("devtoolsBlocker");
-  if (blocker) blocker.classList.add("active");
-  document.body.classList.add("devtools-active");
-  try { console.clear(); } catch (e) {}
-
-  setTimeout(() => {
-    if (blocker) blocker.classList.remove("active");
-    document.body.classList.remove("devtools-active");
-  }, 3500);
 }
 
 function setupAntiScreenshot() {
   updateWatermark();
 
-  // 1. ตรวจจับการกด Win + Shift + S หรือการเปิด Snipping Tool
-  // เมื่อเปิด Snipping Tool หน้าต่างเบราว์เซอร์จะหลุดโฟกัส (Window Blur) ทันที
-  window.addEventListener("blur", () => {
-    document.body.classList.add("is-capturing");
-    const shield = document.getElementById("antiCaptureShield");
-    if (shield) shield.classList.add("active");
-  });
-
-  // เมื่อผู้ใช้คลิกกลับมาที่หน้าต่าง ให้คลายการบล็อคและแสดงผลคมชัดตามปกติ
-  window.addEventListener("focus", () => {
-    document.body.classList.remove("is-capturing");
-    const shield = document.getElementById("antiCaptureShield");
-    if (shield) shield.classList.remove("active");
-  });
-
-  // 2. ตรวจจับการกดปุ่ม PrintScreen (PrtScn)
+  // 1. ตรวจจับการกดปุ่ม PrintScreen (PrtScn) - ป้องกันอย่างเงียบๆ ไม่แสดงป๊อบอัพ
   window.addEventListener("keyup", (e) => {
     if (e.key === "PrintScreen" || e.keyCode === 44) {
       triggerAntiCapture();
     }
   });
 
-  // 3. ป้องกันการกด F12 และคีย์ลัดเปิดเครื่องมือผู้พัฒนา (DevTools / Inspect)
+  // 2. ป้องกันการกด F12 และคีย์ลัดเปิดเครื่องมือผู้พัฒนา (DevTools / Inspect) อย่างเงียบๆ ไม่มีป๊อบอัพ
   window.addEventListener("keydown", (e) => {
     const isCtrlOrMeta = e.ctrlKey || e.metaKey;
     const key = (e.key || "").toLowerCase();
@@ -2786,8 +2798,7 @@ function setupAntiScreenshot() {
     if (key === "f12" || keyCode === 123) {
       e.preventDefault();
       e.stopPropagation();
-      showCaptureToast("🔒 ไม่อนุญาตให้กด F12 ตรวจสอบระบบ");
-      triggerDevtoolsBlock();
+      try { console.clear(); } catch (err) {}
       return false;
     }
 
@@ -2795,8 +2806,7 @@ function setupAntiScreenshot() {
     if (isCtrlOrMeta && e.shiftKey && (key === "i" || keyCode === 73)) {
       e.preventDefault();
       e.stopPropagation();
-      showCaptureToast("🔒 ไม่อนุญาตให้เปิด Inspect ตรวจสอบซอร์สโค้ด");
-      triggerDevtoolsBlock();
+      try { console.clear(); } catch (err) {}
       return false;
     }
 
@@ -2804,8 +2814,7 @@ function setupAntiScreenshot() {
     if (isCtrlOrMeta && e.shiftKey && (key === "j" || keyCode === 74)) {
       e.preventDefault();
       e.stopPropagation();
-      showCaptureToast("🔒 ไม่อนุญาตให้เปิด Console");
-      triggerDevtoolsBlock();
+      try { console.clear(); } catch (err) {}
       return false;
     }
 
@@ -2813,8 +2822,7 @@ function setupAntiScreenshot() {
     if (isCtrlOrMeta && e.shiftKey && (key === "c" || keyCode === 67)) {
       e.preventDefault();
       e.stopPropagation();
-      showCaptureToast("🔒 ไม่อนุญาตให้เลือกองค์ประกอบหน้าจอ");
-      triggerDevtoolsBlock();
+      try { console.clear(); } catch (err) {}
       return false;
     }
 
@@ -2822,8 +2830,7 @@ function setupAntiScreenshot() {
     if (isCtrlOrMeta && (key === "u" || keyCode === 85)) {
       e.preventDefault();
       e.stopPropagation();
-      showCaptureToast("🔒 ไม่อนุญาตให้ดูซอร์สโค้ดหน้าเว็บ");
-      triggerDevtoolsBlock();
+      try { console.clear(); } catch (err) {}
       return false;
     }
 
@@ -2840,7 +2847,7 @@ function setupAntiScreenshot() {
       return;
     }
 
-    // Ctrl + P (พิมพ์หน้าจอเพื่อเซฟรูป)
+    // Ctrl + P
     if (isCtrlOrMeta && key === "p") {
       triggerAntiCapture();
     }
@@ -2851,50 +2858,21 @@ function setupAntiScreenshot() {
     }
   }, true);
 
-  // 4. ป้องกันการคลิกขวาเพื่อดู Inspect หรือบันทึกภาพ
+  // 3. ป้องกันการคลิกขวาเพื่อดู Inspect หรือบันทึกภาพ (แบบเงียบๆ ไม่มีป๊อบอัพ)
   window.addEventListener("contextmenu", (e) => {
     if (e.target.closest("input, textarea, select")) return;
     e.preventDefault();
-    showCaptureToast("ฮั่นแน่ 🔒 ระบบล็อคคลิกขวาเพื่อความปลอดภัย");
   }, true);
 
-  // 5. ระบบตรวจจับการเปิด DevTools อัตโนมัติ (Active DevTools Detection)
-  let devtoolsDetected = false;
-  function checkDevTools() {
-    const widthDiff = window.outerWidth - window.innerWidth > 160;
-    const heightDiff = window.outerHeight - window.innerHeight > 160;
-    const isOpen = widthDiff || heightDiff;
-
-    const blocker = document.getElementById("devtoolsBlocker");
-    if (isOpen) {
-      if (!devtoolsDetected) {
-        devtoolsDetected = true;
-        if (blocker) blocker.classList.add("active");
-        document.body.classList.add("devtools-active");
-      }
-      try { console.clear(); } catch (err) {}
-    } else {
-      if (devtoolsDetected) {
-        devtoolsDetected = false;
-        if (blocker) blocker.classList.remove("active");
-        document.body.classList.remove("devtools-active");
-      }
-    }
-  }
-
-  setInterval(checkDevTools, 500);
-  window.addEventListener("resize", checkDevTools);
-
-  // เคลียร์ Console เป็นประจำเพื่อไม่ให้มีข้อมูลหลุด
+  // 4. ล้าง Console สม่ำเสมอเพื่อความปลอดภัย
   setInterval(() => {
     try {
       console.clear();
-      console.log("%c🔒 ESP32 IoT Station Shield Active: ข้อมูลหลังบ้านได้รับการปกป้องอย่างปลอดภัย", "color: #10b981; font-weight: bold; font-size: 14px;");
     } catch (e) {}
   }, 2000);
 }
 
-// เริ่มต้นระบบป้องกันการแคปหน้าจอ
+// เริ่มต้นระบบ
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", setupAntiScreenshot);
 } else {
