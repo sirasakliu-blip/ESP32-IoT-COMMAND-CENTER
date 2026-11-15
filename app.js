@@ -727,9 +727,6 @@ function applyTheme(theme) {
   }
 
   updateChartsTheme();
-  if (typeof updateWatermark === "function") {
-    updateWatermark(theme);
-  }
 }
 
 function toggleThemeSmoothly() {
@@ -2739,56 +2736,11 @@ if (document.readyState === "loading") {
 }
 
 // ==========================================================================
-// ===== 11. ระบบลายน้ำและป้องกันการแคปหน้าจอ (Watermark & Silent Anti-Tamper) =====
+// ===== 11. ระบบป้องกันความปลอดภัยของหน้าเว็บ (Silent Protection) =====
 // ==========================================================================
 
-function updateWatermark(theme = null) {
-  const watermarkBg = document.getElementById("watermarkBg");
-  if (!watermarkBg) return;
-
-  const currentTheme = theme || htmlRoot.getAttribute("data-theme") || "dark";
-  const canvas = document.createElement("canvas");
-  canvas.width = 300;
-  canvas.height = 180;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.save();
-  ctx.translate(canvas.width / 2, canvas.height / 2);
-  ctx.rotate(-22 * Math.PI / 180);
-  ctx.font = "bold 15px 'Prompt', 'Kanit', sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = currentTheme === "light" 
-    ? "rgba(30, 41, 59, 0.08)" 
-    : "rgba(255, 255, 255, 0.07)";
-  ctx.fillText("ฮั่นแน่แคปหรอจ๊ะ 📸", 0, 0);
-  ctx.restore();
-
-  try {
-    watermarkBg.style.backgroundImage = `url("${canvas.toDataURL("image/png")}")`;
-  } catch (e) {}
-}
-
-function triggerAntiCapture() {
-  // ล้างและเขียนทับ Clipboard ด้วยข้อความล้อเลียนอย่างเงียบๆ โดยไม่แสดงป๊อบอัพ
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText("ฮั่นแน่แคปหรอจ๊ะ 😜").catch(() => {});
-  }
-}
-
-function setupAntiScreenshot() {
-  updateWatermark();
-
-  // 1. ตรวจจับการกดปุ่ม PrintScreen (PrtScn) - ป้องกันอย่างเงียบๆ ไม่แสดงป๊อบอัพ
-  window.addEventListener("keyup", (e) => {
-    if (e.key === "PrintScreen" || e.keyCode === 44) {
-      triggerAntiCapture();
-    }
-  });
-
-  // 2. ป้องกันการกด F12 และคีย์ลัดเปิดเครื่องมือผู้พัฒนา (DevTools / Inspect) อย่างเงียบๆ ไม่มีป๊อบอัพ
+function setupSilentProtection() {
+  // 1. ป้องกันการกด F12 และคีย์ลัดเปิดเครื่องมือผู้พัฒนา (DevTools / Inspect) อย่างเงียบๆ ไม่มีป๊อบอัพ
   window.addEventListener("keydown", (e) => {
     const isCtrlOrMeta = e.ctrlKey || e.metaKey;
     const key = (e.key || "").toLowerCase();
@@ -2840,31 +2792,15 @@ function setupAntiScreenshot() {
       e.stopPropagation();
       return false;
     }
-
-    // PrintScreen
-    if (e.key === "PrintScreen" || e.keyCode === 44) {
-      triggerAntiCapture();
-      return;
-    }
-
-    // Ctrl + P
-    if (isCtrlOrMeta && key === "p") {
-      triggerAntiCapture();
-    }
-
-    // Ctrl + Shift + S
-    if (isCtrlOrMeta && e.shiftKey && key === "s") {
-      triggerAntiCapture();
-    }
   }, true);
 
-  // 3. ป้องกันการคลิกขวาเพื่อดู Inspect หรือบันทึกภาพ (แบบเงียบๆ ไม่มีป๊อบอัพ)
+  // 2. ป้องกันการคลิกขวาเพื่อดู Inspect หรือบันทึกภาพ (แบบเงียบๆ ไม่มีป๊อบอัพ)
   window.addEventListener("contextmenu", (e) => {
     if (e.target.closest("input, textarea, select")) return;
     e.preventDefault();
   }, true);
 
-  // 4. ล้าง Console สม่ำเสมอเพื่อความปลอดภัย
+  // 3. ล้าง Console สม่ำเสมอเพื่อความปลอดภัย
   setInterval(() => {
     try {
       console.clear();
@@ -2874,7 +2810,7 @@ function setupAntiScreenshot() {
 
 // เริ่มต้นระบบ
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", setupAntiScreenshot);
+  document.addEventListener("DOMContentLoaded", setupSilentProtection);
 } else {
-  setupAntiScreenshot();
+  setupSilentProtection();
 }

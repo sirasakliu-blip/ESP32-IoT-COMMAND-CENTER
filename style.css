@@ -2403,28 +2403,8 @@ body.board-offline .card h2 { opacity: .45; }
 }
 
 /* ==========================================================================
-   14. ระบบลายน้ำและป้องกันการแคปหน้าจอ (Anti-Screenshot & Watermark System)
+   14. ระบบป้องกันความปลอดภัยของหน้าเว็บ (Silent Security Protection)
    ========================================================================== */
-
-/* ลายน้ำพื้นหลัง (Watermark Background) ถาวรกระจายทั่วทุกหน้าจอ */
-.watermark-bg {
-  position: fixed;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  user-select: none;
-  background-repeat: repeat;
-  background-size: 300px 180px;
-  opacity: 0.85;
-  transition: opacity 0.3s ease, filter 0.3s ease;
-}
-
-/* เลเยอร์ป๊อบอัพถูกปิดตามคำขอของผู้ใช้ (ทำงานแบบเงียบๆ ไม่เด้งรบกวน) */
-.anti-capture-shield,
-.devtools-blocker,
-.capture-toast {
-  display: none !important;
-}
 
 /* ป้องกันการสั่งพิมพ์หน้าเว็บ (Print / Save to PDF) */
 @media print {
