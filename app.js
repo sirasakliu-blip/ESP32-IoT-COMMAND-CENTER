@@ -192,11 +192,14 @@ const loadDemoBtn = document.getElementById("loadDemoBtn");
 let db = null;
 let readingsRef = null;
 let latestTs = 0;
-// ค่าสดจาก Backend API /api/live (ดูส่วนที่ 9 ท้ายไฟล์)
-const LIVE_URL = "/api/live";
+// ค่าสดจาก Firebase RTDB /live (เชื่อมต่อ EventSource สตรีมสดเหมือนดั้งเดิม)
+const BACKEND_LIVE_API = "/api/live";
+const LIVE_URL = atob("aHR0cHM6Ly90ZW1wLWh1bWlkLWVzcDMyLWRiNGI5LWRlZmF1bHQtcnRkYi5hc2lhLXNvdXRoZWFzdDEuZmlyZWJhc2VkYXRhYmFzZS5hcHAvbGl2ZS5qc29u");
 const LIVE_FRESH_SEC = 10; // ไม่มีค่าใหม่เกิน 10 วิ = ถือว่าบอร์ดหยุดส่ง
 let liveTs = 0;
 let liveArrivedAt = 0; // เวลาที่ "ได้รับค่าใหม่" บนเครื่องผู้ชม (ไม่พึ่งนาฬิกาเครื่องผู้ชมตรงกับบอร์ด)
+let latestLiveDate = "";
+let latestLiveTime = "";
 let isDemoMode = false;
 let isSheetMode = false;
 let currentSource = "none";
@@ -259,6 +262,31 @@ function thParts(ms) {
 }
 function fmtThDate(ms) { const p = thParts(ms); return `${p.day} ${TH_MONTHS[p.m]} ${p.y}`; }
 function fmtThTime(ms, withSec) { const p = thParts(ms); return withSec ? `${p.hh}:${p.mm}:${p.ss}` : `${p.hh}:${p.mm}`; }
+
+// แปลงวันที่ให้อยู่ในลำดับแบบไทย: วันที่/เดือน/ปี (DD/MM/YYYY)
+function formatThaiDateTime(dateStr, timeStr) {
+  if (!dateStr) return timeStr || "-";
+  let d = String(dateStr).trim();
+  const parts = d.split(/[-/]/);
+  if (parts.length === 3) {
+    if (parts[0].length === 4) {
+      // YYYY-MM-DD -> DD/MM/YYYY (วันที่ / เดือน / ปี ตามลำดับภาษาไทย)
+      d = `${parts[2].padStart(2, "0")}/${parts[1].padStart(2, "0")}/${parts[0]}`;
+    } else if (parts[2].length === 4) {
+      // DD/MM/YYYY
+      d = `${parts[0].padStart(2, "0")}/${parts[1].padStart(2, "0")}/${parts[2]}`;
+    }
+  }
+  return timeStr ? `${d} ${timeStr}` : d;
+}
+
+// แปลง Timestamp มิลลิวินาทีเป็นวันที่และเวลาแบบไทย: วันที่/เดือน/ปี HH:MM:SS
+function formatThaiDateFromMs(ms) {
+  const p = thParts(ms);
+  const day = String(p.day).padStart(2, "0");
+  const m = String(p.m + 1).padStart(2, "0");
+  return `${day}/${m}/${p.y} ${p.hh}:${p.mm}:${p.ss}`;
+}
 
 // แสดงข้อความกลางกราฟเมื่อไม่มีข้อมูล
 const noDataPlugin = {
@@ -928,7 +956,7 @@ async function fetchFromGoogleSheet(inputUrl, isBackground = false) {
     if (!isLiveFresh()) {
       if (tempEl) tempEl.textContent = last.temp.toFixed(1);
       if (humEl) humEl.textContent = last.hum.toFixed(1);
-      if (updatedEl) updatedEl.textContent = `${last.date} ${last.time}`;
+      if (updatedEl) updatedEl.textContent = formatThaiDateTime(last.date, last.time);
       latestTs = last.ts;
       updateMetricPills(last.temp, last.hum);
     }
@@ -987,10 +1015,12 @@ async function fetchFromGoogleSheet(inputUrl, isBackground = false) {
         const cachedRows = JSON.parse(cached);
         if (Array.isArray(cachedRows) && cachedRows.length > 0) {
           const last = cachedRows[cachedRows.length - 1];
-          if (tempEl) tempEl.textContent = last.temp.toFixed(1);
-          if (humEl) humEl.textContent = last.hum.toFixed(1);
-          if (updatedEl) updatedEl.textContent = `${last.date} ${last.time}`;
-          updateMetricPills(last.temp, last.hum);
+          if (!isLiveFresh()) {
+            if (tempEl) tempEl.textContent = last.temp.toFixed(1);
+            if (humEl) humEl.textContent = last.hum.toFixed(1);
+            if (updatedEl) updatedEl.textContent = formatThaiDateTime(last.date, last.time);
+            updateMetricPills(last.temp, last.hum);
+          }
           updateMinMaxSub(cachedRows);
           updateDataRangeHint(cachedRows);
           const dailyCached = getTodayDailyRows(cachedRows);
@@ -1077,12 +1107,13 @@ function initFirebaseApp(config) {
 
       currentRows = rows;
       const last = rows[rows.length - 1];
-      if (tempEl) tempEl.textContent = last.temp.toFixed(1);
-      if (humEl) humEl.textContent = last.hum.toFixed(1);
-      if (updatedEl) updatedEl.textContent = `${last.date} ${last.time}`;
+      if (!isLiveFresh()) {
+        if (tempEl) tempEl.textContent = last.temp.toFixed(1);
+        if (humEl) humEl.textContent = last.hum.toFixed(1);
+        if (updatedEl) updatedEl.textContent = formatThaiDateTime(last.date, last.time);
+        updateMetricPills(last.temp, last.hum);
+      }
       latestTs = last.ts;
-
-      updateMetricPills(last.temp, last.hum);
       updateMinMaxSub(rows);
       checkStatus();
       updateChart(liveChart, rows);
@@ -1448,7 +1479,7 @@ function renderTable(rows, emptyHtml = "ไม่พบข้อมูลใน�
       "beforeend",
       `<tr>
         <td>${i + 1}</td>
-        <td>${r.date}</td>
+        <td>${formatThaiDateTime(r.date)}</td>
         <td>${r.time}</td>
         <td><strong class="temp-text">${r.temp.toFixed(1)}</strong></td>
         <td><strong class="hum-text">${r.hum.toFixed(1)}</strong></td>
@@ -1792,7 +1823,7 @@ if (loadDemoBtn) {
     
     if (tempEl) tempEl.textContent = last.temp.toFixed(1);
     if (humEl) humEl.textContent = last.hum.toFixed(1);
-    if (updatedEl) updatedEl.textContent = `${last.date} ${last.time} (Demo Live)`;
+    if (updatedEl) updatedEl.textContent = `${formatThaiDateTime(last.date, last.time)} (Demo Live)`;
     latestTs = last.ts;
     
     if (sourceBadge) {
@@ -1830,7 +1861,7 @@ if (loadDemoBtn) {
       
       if (tempEl) tempEl.textContent = newItem.temp.toFixed(1);
       if (humEl) humEl.textContent = newItem.hum.toFixed(1);
-      if (updatedEl) updatedEl.textContent = `${newItem.date} ${newItem.time} (Demo Live)`;
+      if (updatedEl) updatedEl.textContent = `${formatThaiDateTime(newItem.date, newItem.time)} (Demo Live)`;
       latestTs = newItem.ts;
       
       updateMetricPills(newItem.temp, newItem.hum);
@@ -1971,6 +2002,18 @@ function isLiveFresh() {
   return liveArrivedAt > 0 && Date.now() - liveArrivedAt <= LIVE_FRESH_SEC * 1000;
 }
 
+function updateLiveClockDisplay() {
+  if (!updatedEl) return;
+  if (isLiveFresh() && liveTs > 0) {
+    // เดินวินาทีทีละ 1 วินาทีแบบเรียลไทม์ต่อเนื่อง ซิงค์ตรงกับบอร์ด ESP32 ไม่ข้ามทีละ 2 วิ
+    const elapsedMs = Math.max(0, Date.now() - liveArrivedAt);
+    const currentMs = (liveTs * 1000) + elapsedMs;
+    updatedEl.textContent = formatThaiDateFromMs(currentMs);
+  } else if (latestLiveDate && latestLiveTime) {
+    updatedEl.textContent = formatThaiDateTime(latestLiveDate, latestLiveTime);
+  }
+}
+
 function showLive(r) {
   if (!r || r.ts === undefined) return;
   const t = Number(r.temp), h = Number(r.hum);
@@ -1984,36 +2027,56 @@ function showLive(r) {
   }
   liveTs = newTs;
   latestTs = liveTs;
+  latestLiveDate = r.date;
+  latestLiveTime = r.time;
+
   if (tempEl) tempEl.textContent = t.toFixed(1);
   if (humEl) humEl.textContent = h.toFixed(1);
-  if (updatedEl) updatedEl.textContent = `${r.date} ${r.time}`;
+  updateLiveClockDisplay();
   updateMetricPills(t, h);
   checkStatus();
 }
 
 function fetchLiveOnce() {
-  fetch("/api/live?t=" + Date.now(), { cache: "no-store" })
+  fetch(LIVE_URL + "?t=" + Date.now(), { cache: "no-store" })
     .then((res) => {
       if (res.ok) return res.json();
-      throw new Error("Live API unavailable");
+      throw new Error("Live stream unavailable");
     })
     .then(showLive)
-    .catch(() => {
-      if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
-        try {
-          const _localFb = atob("aHR0cHM6Ly90ZW1wLWh1bWlkLWVzcDMyLWRiNGI5LWRlZmF1bHQtcnRkYi5hc2lhLXNvdXRoZWFzdDEuZmlyZWJhc2VkYXRhYmFzZS5hcHAvbGl2ZS5qc29u");
-          fetch(_localFb + "?t=" + Date.now(), { cache: "no-store" })
-            .then((r) => r.json())
-            .then(showLive)
-            .catch(() => {});
-        } catch (e) {}
-      }
-    });
+    .catch(() => {});
 }
 
 function startLiveStream() {
   fetchLiveOnce();
-  setInterval(fetchLiveOnce, 2000);
+
+  // 1. เชื่อมต่อ Firebase REST Streaming (EventSource) แบบ Real-time ทันทีที่บอร์ดส่งค่าเข้ามา
+  if ("EventSource" in window) {
+    try {
+      const stream = new EventSource(LIVE_URL);
+      stream.addEventListener("put", (e) => {
+        try {
+          const msg = JSON.parse(e.data); // { path: "/", data: {...} }
+          if (msg.path === "/" && msg.data) {
+            showLive(msg.data);
+          } else {
+            fetchLiveOnce();
+          }
+        } catch (err) {}
+      });
+      stream.addEventListener("patch", () => fetchLiveOnce());
+      stream.onerror = () => {
+        fetchLiveOnce();
+      };
+    } catch (e) {
+      setInterval(fetchLiveOnce, 1000);
+    }
+  } else {
+    setInterval(fetchLiveOnce, 1000);
+  }
+
+  // 2. เดินเวลานาฬิกาทีละ 1 วินาทีแบบเรียลไทม์ต่อเนื่อง (ไม่กระตุกหรือข้าม 2 วิ)
+  setInterval(updateLiveClockDisplay, 1000);
 }
 
 startLiveStream();
@@ -2631,18 +2694,30 @@ function setupViewSwitching() {
 
   if (!viewLive && !viewAnalytics && !viewAgriculture) return;
 
+  function getViewFromLocation() {
+    const p = (window.location.pathname || "").toLowerCase();
+    if (p.includes("agriculture")) return "agriculture";
+    if (p.includes("history") || p.includes("analytic")) return "analytics";
+    return "live";
+  }
+
   function switchView(target, updateUrl = true) {
-    // อัปเดตแท็บขีดเส้นใต้
+    // 1. อัปเดตแท็บขีดเส้นใต้ ให้ขีดปรากฏใต้แท็บที่ถูกเลือกอย่างชัดเจน 100%
     navPills.forEach((pill) => {
-      const pView = pill.getAttribute("data-view") || (pill.getAttribute("href")?.includes("agriculture.html") ? "agriculture" : (pill.getAttribute("href")?.includes("history.html") ? "analytics" : "live"));
+      const href = (pill.getAttribute("href") || "").toLowerCase();
+      const pView = pill.getAttribute("data-view") || 
+        (href.includes("agriculture") ? "agriculture" : (href.includes("history") ? "analytics" : "live"));
+      
       if (pView === target) {
         pill.classList.add("active");
+        pill.setAttribute("aria-selected", "true");
       } else {
         pill.classList.remove("active");
+        pill.setAttribute("aria-selected", "false");
       }
     });
 
-    // อัปเดตหัวข้อ Header ให้ตรงกับหน้าที่เลือกเสมอ
+    // 2. อัปเดตหัวข้อ Header ให้ตรงกับหน้าที่เลือกเสมอ
     const headerTitle = document.querySelector(".app-header h1");
     const headerSub = document.querySelector(".app-header .subtitle");
     if (headerTitle && headerSub) {
@@ -2658,39 +2733,46 @@ function setupViewSwitching() {
       }
     }
 
-    const doSwitch = () => {
-      [viewLive, viewAnalytics, viewAgriculture].forEach((v) => {
-        if (!v) return;
-        v.style.display = "none";
-        v.classList.remove("active");
-      });
+    // 3. สลับมุมมองเนื้อหาอย่างนุ่มนวล ไม่สั่น ไม่กระตุก (ไม่ใช้ startViewTransition ที่ทำให้จอสั่น)
+    [viewLive, viewAnalytics, viewAgriculture].forEach((v) => {
+      if (!v) return;
+      v.style.display = "none";
+      v.classList.remove("active");
+    });
 
-      if (target === "live" && viewLive) {
-        viewLive.style.display = "flex";
-        viewLive.classList.add("active");
+    if (target === "live" && viewLive) {
+      viewLive.style.display = "flex";
+      viewLive.classList.add("active");
+      requestAnimationFrame(() => {
         const ch = window.Chart && Chart.getChart("liveChart");
         if (ch) { applyResponsiveChart(ch); ch.resize(); ch.update("none"); }
-      } else if (target === "analytics" && viewAnalytics) {
-        viewAnalytics.style.display = "block";
-        viewAnalytics.classList.add("active");
+      });
+    } else if (target === "analytics" && viewAnalytics) {
+      viewAnalytics.style.display = "block";
+      viewAnalytics.classList.add("active");
+      requestAnimationFrame(() => {
         const ch = window.Chart && Chart.getChart("rangeChart");
         if (ch) { applyResponsiveChart(ch); ch.resize(); ch.update("none"); }
-      } else if (target === "agriculture" && viewAgriculture) {
-        viewAgriculture.style.display = "block";
-        viewAgriculture.classList.add("active");
-        updateAgriAdvisory();
-      }
-    };
-
-    if (document.startViewTransition) {
-      document.startViewTransition(doSwitch);
-    } else {
-      doSwitch();
+      });
+    } else if (target === "agriculture" && viewAgriculture) {
+      viewAgriculture.style.display = "block";
+      viewAgriculture.classList.add("active");
+      updateAgriAdvisory();
     }
 
+    // เลื่อนกลับไปบนสุดแบบทันที ไม่ให้หน้าจอกระตุก
+    try {
+      window.scrollTo({ top: 0, behavior: "instant" });
+    } catch (e) {
+      window.scrollTo(0, 0);
+    }
+
+    // 4. อัปเดต URL โดยไม่รีโหลดหน้า
     if (updateUrl) {
       const targetUrl = target === "agriculture" ? "agriculture.html" : (target === "analytics" ? "history.html" : "index.html");
-      if (!window.location.pathname.endsWith(targetUrl)) {
+      const cleanTarget = targetUrl.replace(".html", "");
+      const curr = (window.location.pathname || "").toLowerCase();
+      if (!curr.endsWith(targetUrl) && !curr.endsWith(cleanTarget)) {
         try {
           history.pushState({ view: target }, "", targetUrl);
         } catch (e) {}
@@ -2701,28 +2783,20 @@ function setupViewSwitching() {
   navPills.forEach((pill) => {
     pill.addEventListener("click", (e) => {
       e.preventDefault();
-      const href = pill.getAttribute("href") || "";
-      const target = pill.getAttribute("data-view") || (href.includes("agriculture.html") ? "agriculture" : (href.includes("history.html") ? "analytics" : "live"));
+      const href = (pill.getAttribute("href") || "").toLowerCase();
+      const target = pill.getAttribute("data-view") || 
+        (href.includes("agriculture") ? "agriculture" : (href.includes("history") ? "analytics" : "live"));
       switchView(target, true);
     });
   });
 
-  window.addEventListener("popstate", () => {
-    const path = window.location.pathname;
-    const target = path.includes("agriculture.html") ? "agriculture" : (path.includes("history.html") ? "analytics" : "live");
+  window.addEventListener("popstate", (e) => {
+    const target = (e.state && e.state.view) || getViewFromLocation();
     switchView(target, false);
   });
 
-  // เปิดเว็บครั้งแรก: บังคับให้อยู่ที่หน้าแดชบอร์ดภาพรวม (Live Overview) เสมอ
-  const currentPath = window.location.pathname;
-  let initView = "live";
-  if (currentPath.endsWith("agriculture.html")) {
-    initView = "agriculture";
-  } else if (currentPath.endsWith("history.html")) {
-    initView = "analytics";
-  } else {
-    initView = "live";
-  }
+  // เปิดเว็บครั้งแรก: กำหนดมุมมองเริ่มต้นให้ตรงกับหน้าปัจจุบัน
+  const initView = getViewFromLocation();
   switchView(initView, false);
 
   setupAgriListeners();
